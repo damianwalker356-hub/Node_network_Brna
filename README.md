@@ -2,6 +2,8 @@
 
 **Status: Draft.** This repository packages a small, reproducible software experiment for a toy network that exchanges bounded latent vectors and uses learned gates. It is not a biological, hardware, actuator, or network-connected system.
 
+**[Open BRNA Studio in your browser](https://damianwalker356-hub.github.io/Node_network_Brna/web/)** · [Source repository](https://github.com/damianwalker356-hub/Node_network_Brna)
+
 ## Scope and status
 
 The evidence currently available is limited to a toy backbone and one synthetic task, three seeds, unequal parameter counts, and untuned training. It does not establish an advantage, generalization, or fitness for operational use. The no-communication result near chance is a valid result, not a failure to disclose.
@@ -10,7 +12,7 @@ The evidence currently available is limited to a toy backbone and one synthetic 
 
 An installable, local-first browser studio is in [`web/`](web/). BRNA message-passing networks are the default, with configurable nodes, per-node features, hidden width, message-passing hops, readout node, in-degree, outputs, and communication mode. The default configuration follows the prototype dimensions and has 849 trainable parameters. Dense networks remain an optional model family. Both families support supervised training, loss-based evolutionary weight search, and contextual reward/policy updates. JSON model export/import, browser-local save, and taught-example conversation retrieval are included. This is a BRNA network-design workbench, not a game.
 
-Run it locally from the repository root with `npm run serve:web`, then open `http://localhost:8000`. The app can be installed from a browser that supports PWAs and served over HTTPS; the service worker enables offline use after the first successful load. Browser data is stored in local storage and is not synchronized to the Python package.
+The app is published under [`web/`](web/) on GitHub Pages. The Pages root forwards to the browser app. For local development, run `npm run serve:web` from the repository root and open `http://localhost:8000`. It can be installed from a browser that supports PWAs and served over HTTPS; the service worker enables offline use after the first successful load. Browser data is stored in local storage and is not synchronized to the Python package.
 
 The browser conversation feature retrieves explicitly taught examples; it is not a generative language model and does not update network weights. Policy learning uses contextual bandit rewards rather than multi-step state transitions. Evolutionary fitness is negative cross-entropy on the configured training examples; it does not represent a validated BRNA task fitness metric. The built-in XOR dataset is a smoke-test example, not real-world evidence.
 
