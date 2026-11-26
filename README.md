@@ -6,6 +6,12 @@
 
 The evidence currently available is limited to a toy backbone and one synthetic task, three seeds, unequal parameter counts, and untuned training. It does not establish an advantage, generalization, or fitness for operational use. The no-communication result near chance is a valid result, not a failure to disclose.
 
+## Agent-learning integration (early Python core)
+
+The project is beginning to combine the agent builder, explicit conversational teaching, reinforcement learning, and evolution-style policy search. The first Python modules provide editable declarative agent definitions, retrieval from user-taught conversation pairs, a tabular Q-learner, and a seeded genetic optimizer for policy weights. This is a core/API foundation, not yet a complete interactive app or a language model that can generate novel dialogue. See [the integration architecture](docs/integration_architecture.md).
+
+Agent source currently supports only `agent`, `rule`, and `weight` declarations. It is parsed as data; arbitrary Python or Forge programs are not executed. The Unity Evolution project is not copied into this repository; its stated terms prohibit redistribution. The new evolution module is an original implementation of general evolutionary optimization concepts and has not been validated against that game.
+
 The checkout originally supplied contains `brna_proto.py`, `run_record.json`, and a prototype verification PDF. The Rev B source, runner, test-results JSON, baseline PDF, compliance workbook, full NPR document, and figure described in project context were not in the repository tree observed at implementation time. The historical record is retained as received in `results/run_records/20261126T002255Z-source.json`; report values are aggregated from that record. Its legacy schema predates required git-commit/settings metadata.
 
 ## Install and test (Python 3.12)

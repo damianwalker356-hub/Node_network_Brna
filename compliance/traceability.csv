@@ -15,3 +15,9 @@ R-7.2,No network egress or process execution imports,BRNA-R-7.2,Ready for review
 R-7.3,Reports include limitations and all recorded variants,BRNA-R-7.3,Ready for review,test_report_requires_limitations_and_all_declared_variants
 R-TRACE-01,Traceability mapping complete in both directions,Project acceptance,Ready for review,test_each_requirement_and_test_is_traceable
 R-REG-01,No-communication synthetic ablation remains near chance,Prototype verification,Ready for review,test_no_communication_ablation_near_chance
+R-AGENT-01,Agent definitions round-trip and select actions from configured weights,Project integration,Ready for review,test_agent_source_round_trips_and_selects_weighted_action
+R-AGENT-02,Agent source accepts only the declarative grammar and never executes arbitrary code,Project integration,Ready for review,test_agent_source_rejects_executable_python
+R-CONV-01,Conversation replies are retrieved only from explicitly taught examples,Project integration,Ready for review,test_conversation_memory_returns_only_explicitly_taught_answers
+R-RL-01,Tabular reinforcement learning applies the configured discounted temporal-difference update,Project integration,Ready for review,test_q_learning_applies_discounted_one_step_update
+R-EVO-01,Evolution preserves elite policies and is deterministic for a fixed seed,Project integration,Ready for review,test_evolution_keeps_elite_and_repeats_with_same_seed
+R-CREATURE-01,Creature foraging episodes provide bounded observations actions rewards and termination,Project integration,Ready for review,test_policy_and_q_learner_run_in_bounded_creature_environment
