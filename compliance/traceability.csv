@@ -21,3 +21,6 @@ R-CONV-01,Conversation replies are retrieved only from explicitly taught example
 R-RL-01,Tabular reinforcement learning applies the configured discounted temporal-difference update,Project integration,Ready for review,test_q_learning_applies_discounted_one_step_update
 R-EVO-01,Evolution preserves elite policies and is deterministic for a fixed seed,Project integration,Ready for review,test_evolution_keeps_elite_and_repeats_with_same_seed
 R-CREATURE-01,Creature foraging episodes provide bounded observations actions rewards and termination,Project integration,Ready for review,test_policy_and_q_learner_run_in_bounded_creature_environment
+R-STUDIO-01,Train and persist a bounded Unicode character language model,Project integration,Ready for review,test_training_reduces_loss_and_generates_known_characters
+R-STUDIO-02,Serve the browser studio and local model API on loopback,Project integration,Ready for review,test_server_serves_studio_and_reports_model_status
+R-STUDIO-03,Package desktop builds into platform-specific archives,Project integration,Ready for review,test_desktop_archive_contains_only_packaged_application_files

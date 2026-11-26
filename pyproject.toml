@@ -13,13 +13,18 @@ dependencies = ["numpy==2.2.3"]
 dev = ["pytest==8.3.5", "ruff==0.9.7"]
 pdf = ["reportlab==4.3.1"]
 torch = ["torch==2.6.0"]
+desktop = ["pyinstaller==6.11.1"]
 
 [project.scripts]
 brna-run = "brna.experiment:main"
 brna-report = "brna.reporting:main"
+brna-studio = "brna.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.data-files]
+"share/brna-studio/web" = ["web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

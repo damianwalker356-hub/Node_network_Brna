@@ -18,6 +18,7 @@
       </a>
       <div class="top-actions">
         <span id="saveStatus" class="save-status" role="status">Saved on this device</span>
+        <a class="button button-quiet" href="https://github.com/damianwalker356-hub/Node_network_Brna/releases" target="_blank" rel="noopener">Desktop downloads</a>
         <button id="installButton" class="button button-quiet" type="button" hidden>Install app</button>
       </div>
     </header>
@@ -174,14 +175,31 @@
               <div class="panel-heading"><div><p class="eyebrow">TEST MEMORY</p><h2>Ask a question</h2></div><span id="exampleCount" class="metric-chip">0 examples</span></div>
               <label class="field-label" for="chatPrompt">Your prompt</label>
               <textarea id="chatPrompt" class="text-input text-area" rows="3" maxlength="1000" placeholder="Ask about something you taught."></textarea>
-              <button id="askMemory" class="button button-secondary" type="button">Find learned response</button>
-              <div id="chatResponse" class="chat-response" aria-live="polite">Responses come only from examples you have taught.</div>
+              <button id="askMemory" class="button button-secondary" type="button">Ask local model</button>
+              <div id="chatResponse" class="chat-response" aria-live="polite">When connected, the local server retrieves taught answers or generates experimental text.</div>
             </div>
+          </div>
+          <div class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">SELF-HOSTED GENERATIVE MODEL</p><h2>Train and run on this computer</h2></div>
+              <span id="localModelBadge" class="metric-chip">Checking local server…</span>
+            </div>
+            <p id="localModelStatus" class="panel-copy">The local model server stores its model and examples on this computer. The GitHub Pages demo does not run inference; start the desktop app to enable local generation.</p>
+            <div class="training-controls">
+              <label class="field-label" for="modelTrainingEpochs">Training epochs <input id="modelTrainingEpochs" type="number" min="1" max="50" value="3"></label>
+              <label class="field-label file-button" for="modelCorpusFile">Text corpus (.txt) <input id="modelCorpusFile" type="file" accept=".txt,text/plain"></label>
+            </div>
+            <div class="button-row">
+              <button id="trainFromExamples" class="button button-primary" type="button" disabled>Train from taught examples</button>
+              <button id="trainFromCorpus" class="button button-quiet" type="button" disabled>Train from selected text</button>
+              <button id="refreshLocalModel" class="button button-quiet" type="button">Check server</button>
+            </div>
+            <p id="modelTrainingStatus" class="status-message" role="status">Training data stays on this computer. This small from-scratch character model is experimental and needs examples before it can generate useful text.</p>
           </div>
           <div class="panel">
             <div class="panel-heading"><div><p class="eyebrow">LOCAL DATA</p><h2>Taught examples</h2></div><button id="clearExamples" class="button button-danger" type="button">Clear all</button></div>
             <div id="exampleList" class="example-list"></div>
-            <p class="disclaimer">This first browser version uses example retrieval, not a generative language model. Adding examples changes conversation memory; it does not change neural-network weights.</p>
+            <p class="disclaimer">Taught examples are stored locally. The self-hosted character model can be trained on these examples or a text corpus; it is a small experimental model, not a general-purpose large language model.</p>
           </div>
         </section>
 

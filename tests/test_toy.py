@@ -57,7 +57,10 @@ def test_no_forbidden_egress_imports():
         tree=ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node,ast.Import): names=[a.name.split('.')[0] for a in node.names]
-            elif isinstance(node,ast.ImportFrom) and node.module: names=[node.module.split('.')[0]]
+            elif isinstance(node,ast.ImportFrom) and node.module:
+                names=[node.module.split('.')[0]]
+                if node.module in {'http.server', 'urllib.parse'}:
+                    names.remove(node.module.split('.')[0])
             else: continue
             assert not banned.intersection(names), f'forbidden import in {path}: {names}'
 @pytest.mark.req('R-TRACE-01')

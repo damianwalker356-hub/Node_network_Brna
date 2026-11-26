@@ -1,4 +1,4 @@
-const CACHE = "brna-studio-v2";
+const CACHE = "brna-studio-v3";
 const FILES = [
   "./",
   "./index.html",

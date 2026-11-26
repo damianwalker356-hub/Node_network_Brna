@@ -4,7 +4,7 @@
 
 ## Browser studio
 
-The static PWA in `web/` runs the model and learning loops locally in the browser:
+The static PWA in `web/` provides the browser interface:
 
 - Design the prototype-shaped message-passing network with configurable nodes, node features, hidden width, hops, readout node, incoming edges, output count, and communication mode; inspect its directed graph and parameter count. The default has 12 nodes, 4 features per node, width 16, 3 hops, and 849 parameters.
 - Optionally create a dense network with an input layer, up to six hidden layers, and an output layer.
@@ -12,11 +12,15 @@ The static PWA in `web/` runs the model and learning loops locally in the browse
 - Train either network family with backpropagation on small, validated numeric datasets.
 - Run evolutionary search over network-weight candidates, with deterministic seeds and negative cross-entropy as the explicitly defined example fitness function.
 - Apply contextual policy-gradient updates from user-provided action rewards. This is a bandit-style update; delayed rewards and state transitions are not implemented.
-- Teach prompt/response pairs into local conversation memory and retrieve a sufficiently similar example. No generated answer or neural-weight update is implied.
-- Save the current model and teaching examples in this browser; export/import network JSON. Browser storage is device-local and can be cleared by the user.
+- Teach prompt/response pairs into local conversation memory and retrieve a sufficiently similar example.
+- Install and use the UI offline after a successful initial load from localhost or HTTPS.
+
+The `brna-studio` Python command runs the self-hosted service on `127.0.0.1:8765` and serves the same UI and JSON API from one origin. It stores a character-level recurrent language model and conversation memory in the user data directory. The model is implemented from scratch and can be trained from taught pairs or an imported plain-text corpus. The GitHub Pages version remains static; generation requires running the local service or a desktop release.
+
+The from-scratch model is a small experimental character predictor, not a pretrained or general-purpose large language model. It has no built-in knowledge, and useful output depends on the quality and amount of training text supplied by the user. This implementation deliberately makes no claim of general language understanding or production readiness.
 - Install and use offline as a PWA after a successful initial load from localhost or HTTPS.
 
-The built-in examples validate basic supervised training only. Fitness, policy rewards, and conversation retrieval are not validated against real BRNA tasks. The current PWA stores its model separately from the Python package and does not execute user-authored code.
+The built-in examples validate basic supervised training only. Fitness and policy rewards are not validated against real BRNA tasks. Browser-stored neural-network models remain separate from the Python package. Agent text is parsed as declarative data; the application does not execute arbitrary user-authored code.
 
 ## Initial Python core
 
@@ -42,7 +46,8 @@ The Evolution Unity repository identifies Keiwan Donyagard as copyright holder a
 1. Define and review representative BRNA task datasets, evaluation splits, and task-specific fitness functions.
 2. Connect the browser model format to the Python experiments with versioned import/export and compatibility tests.
 3. Add editable datasets and architecture-aware training settings, with validation and reproducible run metadata.
-4. Evaluate whether the Forge language can be used as a safe policy authoring format; do not treat its existing native runtime as a sandbox.
+4. Evaluate whether the Forge language can be used as a safe policy-authoring format; do not treat its existing native runtime as a sandbox.
 5. Add multi-step reinforcement learning only after state/action/reward and evaluation contracts are defined.
+6. Grow the from-scratch text model only with licensed, reviewed training data and measurable evaluation; do not infer general conversational quality from training loss.
 
 All stages remain software-only and experimental. Performance claims and game equivalence require independent evidence.

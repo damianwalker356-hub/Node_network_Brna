@@ -28,6 +28,7 @@ let examples = [];
 let policy = { baseline: 0, updates: 0, pending: null };
 let toastTimer;
 let installPrompt;
+let localModelHealth = null;
 
 function loadWorkspace() {
   try {
@@ -100,6 +101,86 @@ function saveWorkspace() {
   } catch (error) {
     $("#saveStatus").textContent = "Save failed";
     announce(`Could not save this workspace: ${error.message}`);
+  }
+}
+
+async function localModelRequest(path, payload) {
+  const response = await fetch(`./api/${path}`, {
+    method: payload ? "POST" : "GET",
+    headers: payload ? { "Content-Type": "application/json" } : {},
+    body: payload ? JSON.stringify(payload) : undefined,
+    cache: "no-store",
+  });
+  let result;
+  try {
+    result = await response.json();
+  } catch (error) {
+    throw new Error(`Local model server returned an invalid response: ${error.message}`);
+  }
+  if (!response.ok) throw new Error(result.error || `Local model server returned HTTP ${response.status}.`);
+  return result;
+}
+
+async function refreshLocalModel() {
+  try {
+    localModelHealth = await localModelRequest("health");
+    let syncError = null;
+    try {
+      for (const example of examples) {
+        await localModelRequest("teach", example);
+      }
+    } catch (error) {
+      syncError = error;
+    }
+    localModelHealth = await localModelRequest("health");
+    const model = localModelHealth.model;
+    $("#localModelBadge").textContent = model.trained ? "Model trained" : "Model needs training";
+    $("#localModelStatus").textContent =
+      `Self-hosted server connected · ${model.training_characters.toLocaleString()} training characters · ` +
+      `${localModelHealth.conversation_examples} saved examples. ` +
+      "The model and data stay on this computer.";
+    $("#trainFromExamples").disabled = localModelHealth.conversation_examples === 0;
+    $("#trainFromCorpus").disabled = false;
+    if (syncError) {
+      $("#modelTrainingStatus").textContent =
+        `Server connected, but browser examples could not all sync: ${syncError.message}`;
+    }
+  } catch (error) {
+    localModelHealth = null;
+    $("#localModelBadge").textContent = "Server not connected";
+    $("#localModelStatus").textContent =
+      `Local generation is only available while the downloaded desktop app is running. ` +
+      `The GitHub Pages app is a browser interface and cannot host model inference. (${error.message})`;
+    $("#trainFromExamples").disabled = true;
+    $("#trainFromCorpus").disabled = true;
+  }
+}
+
+async function trainLocalModel(source, text = undefined) {
+  const epochs = Number($("#modelTrainingEpochs").value);
+  if (!Number.isInteger(epochs) || epochs < 1 || epochs > 50) {
+    throw new Error("Training epochs must be a whole number from 1 to 50.");
+  }
+  const button = source === "examples" ? $("#trainFromExamples") : $("#trainFromCorpus");
+  button.disabled = true;
+  $("#modelTrainingStatus").textContent = "Training the local character model…";
+  try {
+    const result = await localModelRequest("train", {
+      source,
+      ...(text === undefined ? {} : { text }),
+      epochs,
+    });
+    const loss = result.losses.at(-1);
+    $("#modelTrainingStatus").textContent =
+      `Training complete · ${result.training_characters.toLocaleString()} cumulative characters · ` +
+      `final loss ${loss.toFixed(3)}. Generation is experimental; evaluate outputs carefully.`;
+    await refreshLocalModel();
+  } finally {
+    button.disabled =
+      !localModelHealth ||
+      (source === "examples" &&
+        localModelHealth.conversation_examples === 0 &&
+        examples.length === 0);
   }
 }
 
@@ -783,7 +864,7 @@ $("#trainEvolution").addEventListener("click", () => {
 });
 $("#evaluateNetwork").addEventListener("click", renderEvaluation);
 
-$("#saveExample").addEventListener("click", () => {
+$("#saveExample").addEventListener("click", async () => {
   const prompt = $("#teachPrompt").value.trim();
   const response = $("#teachResponse").value.trim();
   if (!prompt || !response) {
@@ -795,16 +876,37 @@ $("#saveExample").addEventListener("click", () => {
   }
   $("#teachPrompt").value = "";
   $("#teachResponse").value = "";
-  $("#teachStatus").textContent = "Example added to local conversation memory.";
+  $("#teachStatus").textContent = "Example added to browser conversation memory.";
   saveWorkspace();
   renderConversations();
+  if (localModelHealth) {
+    try {
+      await localModelRequest("teach", { prompt, response });
+      $("#teachStatus").textContent = "Example saved in the browser and synced to the self-hosted model server.";
+    } catch (error) {
+      $("#teachStatus").textContent = `Saved in this browser, but could not sync to the model server: ${error.message}`;
+    }
+  }
 });
-$("#askMemory").addEventListener("click", () => {
+$("#askMemory").addEventListener("click", async () => {
   const prompt = $("#chatPrompt").value.trim();
   const response = $("#chatResponse");
   if (!prompt) {
     response.textContent = "Enter a prompt to search your taught examples.";
     response.classList.remove("has-answer");
+    return;
+  }
+  if (localModelHealth) {
+    response.textContent = "Asking the self-hosted model…";
+    try {
+      const result = await localModelRequest("chat", { prompt });
+      const source = result.source === "local-model" ? "Generated by your local model" : "Retrieved from a taught example";
+      response.textContent = `${result.response}\n\n${source}`;
+      response.classList.add("has-answer");
+    } catch (error) {
+      response.textContent = `The local model could not answer: ${error.message}`;
+      response.classList.remove("has-answer");
+    }
     return;
   }
   const match = retrieveReply(examples, prompt);
@@ -814,6 +916,25 @@ $("#askMemory").addEventListener("click", () => {
   } else {
     response.textContent = "No sufficiently similar taught response was found. Teach a matching example first.";
     response.classList.remove("has-answer");
+  }
+});
+$("#refreshLocalModel").addEventListener("click", refreshLocalModel);
+$("#trainFromExamples").addEventListener("click", async () => {
+  try {
+    await trainLocalModel("examples");
+  } catch (error) {
+    $("#modelTrainingStatus").textContent = `Model training failed: ${error.message}`;
+  }
+});
+$("#trainFromCorpus").addEventListener("click", async () => {
+  try {
+    const [file] = $("#modelCorpusFile").files ?? [];
+    if (!file) throw new Error("Choose a plain-text training corpus first.");
+    if (file.size > 50_000) throw new Error("Training text must not exceed 50,000 bytes.");
+    const text = await file.text();
+    await trainLocalModel("corpus", text);
+  } catch (error) {
+    $("#modelTrainingStatus").textContent = `Model training failed: ${error.message}`;
   }
 });
 $("#clearExamples").addEventListener("click", () => {
@@ -911,3 +1032,4 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     console.error("Service worker registration failed", error);
   });
 }
+void refreshLocalModel();

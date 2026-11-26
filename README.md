@@ -2,7 +2,7 @@
 
 **Status: Draft.** This repository packages a small, reproducible software experiment for a toy network that exchanges bounded latent vectors and uses learned gates. It is not a biological, hardware, actuator, or network-connected system.
 
-**[Open BRNA Studio in your browser](https://damianwalker356-hub.github.io/Node_network_Brna/web/)** · [Source repository](https://github.com/damianwalker356-hub/Node_network_Brna)
+**[Open BRNA Studio in your browser](https://damianwalker356-hub.github.io/Node_network_Brna/web/)** · [Desktop downloads](https://github.com/damianwalker356-hub/Node_network_Brna/releases) · [Source repository](https://github.com/damianwalker356-hub/Node_network_Brna)
 
 ## Scope and status
 
@@ -10,13 +10,22 @@ The evidence currently available is limited to a toy backbone and one synthetic 
 
 ## Browser studio
 
-An installable, local-first browser studio is in [`web/`](web/). BRNA message-passing networks are the default, with configurable nodes, per-node features, hidden width, message-passing hops, readout node, in-degree, outputs, and communication mode. The default configuration follows the prototype dimensions and has 849 trainable parameters. Dense networks remain an optional model family. Both families support supervised training, loss-based evolutionary weight search, and contextual reward/policy updates. JSON model export/import, browser-local save, and taught-example conversation retrieval are included. This is a BRNA network-design workbench, not a game.
+An installable, local-first browser studio is in [`web/`](web/). BRNA message-passing networks are the default, with configurable nodes, per-node features, hidden width, message-passing hops, readout node, in-degree, outputs, and communication mode. Dense networks remain optional. Both families support supervised training, evolutionary weight search, and contextual reward updates. Model import/export and browser-local save are included.
 
-The app is published under [`web/`](web/) on GitHub Pages. The Pages root forwards to the browser app. For local development, run `npm run serve:web` from the repository root and open `http://localhost:8000`. It can be installed from a browser that supports PWAs and served over HTTPS; the service worker enables offline use after the first successful load. Browser data is stored in local storage and is not synchronized to the Python package.
+The [GitHub Pages app](https://damianwalker356-hub.github.io/Node_network_Brna/web/) is a static browser interface. It can be installed as a PWA, but static hosting cannot run the generative model. For the self-hosted model, install the project with Python 3.12 and run `brna-studio`; this starts a local server, opens the browser app, and stores the trained model and teaching examples on your computer. The local app supports conversation retrieval and a small character-level RNN language model trained from your own examples or text. This from-scratch model is experimental and is not comparable to a modern large language model.
 
-The browser conversation feature retrieves explicitly taught examples; it is not a generative language model and does not update network weights. Policy learning uses contextual bandit rewards rather than multi-step state transitions. Evolutionary fitness is negative cross-entropy on the configured training examples; it does not represent a validated BRNA task fitness metric. The built-in XOR dataset is a smoke-test example, not real-world evidence.
+Install and launch locally:
 
-Run the browser core tests with `npm run test:web`. The existing Python package and its agent-learning primitives remain available separately. See [the integration architecture](docs/integration_architecture.md) for boundaries and future work.
+```bash
+python -m pip install -e .
+brna-studio
+```
+
+For browser UI work without the model server, use `npm run serve:web`. Desktop ZIPs for Windows, macOS, and Linux are built by [the desktop release workflow](.github/workflows/desktop-releases.yml) when a `v*` version tag is published; the in-app **Desktop downloads** link opens the Releases page. Browser/PWA data and the local server’s model data are separate. See [the integration architecture](docs/integration_architecture.md) for limitations and interfaces.
+
+Policy learning uses contextual bandit rewards rather than multi-step state transitions. Evolutionary fitness is negative cross-entropy on configured training examples; it is not a validated BRNA task fitness metric. The built-in XOR dataset is a smoke test, not real-world evidence.
+
+Run browser tests with `npm run test:web`; run Python tests with `pytest`.
 
 The Forge browser editor/runtime and the PhysX archive have not been integrated into the studio. The Evolution Unity source is not copied into this repository; its stated terms prohibit redistribution. The clean-room evolution optimizer is independent of that game.
 
