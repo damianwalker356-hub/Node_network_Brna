@@ -1,0 +1,111 @@
+{
+ "code_sha256": {
+  "brna_proto.py": "91aca200cea379c6a661f42c2005e82671e615ea7b8e2a719230c116bad4b74a",
+  "runner.py": "cadf8e65c0ac69f7d70536d152f297db90a1041967f0979e787156541ffcec8c"
+ },
+ "time": "2026-11-26T00:22:55",
+ "steps": 1200,
+ "batch": 256,
+ "test_samples": 5000,
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "results": [
+  {
+   "kind": "vector",
+   "seed": 0,
+   "params": 849,
+   "test_acc": 0.903
+  },
+  {
+   "kind": "vector",
+   "seed": 1,
+   "params": 849,
+   "test_acc": 0.8458
+  },
+  {
+   "kind": "vector",
+   "seed": 2,
+   "params": 849,
+   "test_acc": 0.8858
+  },
+  {
+   "kind": "nocomm",
+   "seed": 0,
+   "params": 849,
+   "test_acc": 0.4974
+  },
+  {
+   "kind": "nocomm",
+   "seed": 1,
+   "params": 849,
+   "test_acc": 0.4956
+  },
+  {
+   "kind": "nocomm",
+   "seed": 2,
+   "params": 849,
+   "test_acc": 0.4982
+  },
+  {
+   "kind": "quantized",
+   "seed": 0,
+   "params": 849,
+   "test_acc": 0.8746
+  },
+  {
+   "kind": "quantized",
+   "seed": 1,
+   "params": 849,
+   "test_acc": 0.8236
+  },
+  {
+   "kind": "quantized",
+   "seed": 2,
+   "params": 849,
+   "test_acc": 0.8792
+  },
+  {
+   "kind": "single_small",
+   "seed": 0,
+   "params": 601,
+   "test_acc": 0.7708
+  },
+  {
+   "kind": "single_small",
+   "seed": 1,
+   "params": 601,
+   "test_acc": 0.7666
+  },
+  {
+   "kind": "single_small",
+   "seed": 2,
+   "params": 601,
+   "test_acc": 0.7758
+  },
+  {
+   "kind": "single_large",
+   "seed": 0,
+   "params": 3201,
+   "test_acc": 0.874
+  },
+  {
+   "kind": "single_large",
+   "seed": 1,
+   "params": 3201,
+   "test_acc": 0.8574
+  },
+  {
+   "kind": "single_large",
+   "seed": 2,
+   "params": 3201,
+   "test_acc": 0.855
+  }
+ ],
+ "egress_scan_banned_imports_found": {
+  "brna_proto.py": false
+ },
+ "backprop_gradient_check_max_rel_err": 2.2e-09
+}
