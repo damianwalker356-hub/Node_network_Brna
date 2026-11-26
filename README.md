@@ -1,4 +1,4 @@
-# B-RNA v0 software-only baseline
+# B-RNA v0 software-only baseline and browser studio
 
 **Status: Draft.** This repository packages a small, reproducible software experiment for a toy network that exchanges bounded latent vectors and uses learned gates. It is not a biological, hardware, actuator, or network-connected system.
 
@@ -6,11 +6,17 @@
 
 The evidence currently available is limited to a toy backbone and one synthetic task, three seeds, unequal parameter counts, and untuned training. It does not establish an advantage, generalization, or fitness for operational use. The no-communication result near chance is a valid result, not a failure to disclose.
 
-## Agent-learning integration (early Python core)
+## Browser studio
 
-The project is beginning to combine the agent builder, explicit conversational teaching, reinforcement learning, and evolution-style policy search. The first Python modules provide editable declarative agent definitions, retrieval from user-taught conversation pairs, a tabular Q-learner, and a seeded genetic optimizer for policy weights. This is a core/API foundation, not yet a complete interactive app or a language model that can generate novel dialogue. See [the integration architecture](docs/integration_architecture.md).
+An installable, local-first browser studio is in [`web/`](web/). BRNA message-passing networks are the default, with configurable nodes, per-node features, hidden width, message-passing hops, readout node, in-degree, outputs, and communication mode. The default configuration follows the prototype dimensions and has 849 trainable parameters. Dense networks remain an optional model family. Both families support supervised training, loss-based evolutionary weight search, and contextual reward/policy updates. JSON model export/import, browser-local save, and taught-example conversation retrieval are included. This is a BRNA network-design workbench, not a game.
 
-Agent source currently supports only `agent`, `rule`, and `weight` declarations. It is parsed as data; arbitrary Python or Forge programs are not executed. The Unity Evolution project is not copied into this repository; its stated terms prohibit redistribution. The new evolution module is an original implementation of general evolutionary optimization concepts and has not been validated against that game.
+Run it locally from the repository root with `npm run serve:web`, then open `http://localhost:8000`. The app can be installed from a browser that supports PWAs and served over HTTPS; the service worker enables offline use after the first successful load. Browser data is stored in local storage and is not synchronized to the Python package.
+
+The browser conversation feature retrieves explicitly taught examples; it is not a generative language model and does not update network weights. Policy learning uses contextual bandit rewards rather than multi-step state transitions. Evolutionary fitness is negative cross-entropy on the configured training examples; it does not represent a validated BRNA task fitness metric. The built-in XOR dataset is a smoke-test example, not real-world evidence.
+
+Run the browser core tests with `npm run test:web`. The existing Python package and its agent-learning primitives remain available separately. See [the integration architecture](docs/integration_architecture.md) for boundaries and future work.
+
+The Forge browser editor/runtime and the PhysX archive have not been integrated into the studio. The Evolution Unity source is not copied into this repository; its stated terms prohibit redistribution. The clean-room evolution optimizer is independent of that game.
 
 The checkout originally supplied contains `brna_proto.py`, `run_record.json`, and a prototype verification PDF. The Rev B source, runner, test-results JSON, baseline PDF, compliance workbook, full NPR document, and figure described in project context were not in the repository tree observed at implementation time. The historical record is retained as received in `results/run_records/20261126T002255Z-source.json`; report values are aggregated from that record. Its legacy schema predates required git-commit/settings metadata.
 

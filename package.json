@@ -1,0 +1,9 @@
+{
+  "name": "brna-studio-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:web": "node --test web/*.test.js",
+    "serve:web": "python3 -m http.server 8000 --directory web"
+  }
+}

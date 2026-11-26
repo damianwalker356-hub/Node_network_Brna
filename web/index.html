@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101714">
+    <meta name="description" content="Design, train, and evaluate BRNA neural-network prototypes in your browser.">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./app.css">
+    <title>BRNA Studio</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#design" aria-label="BRNA Studio home">
+        <span class="brand-mark" aria-hidden="true">B</span>
+        <span><strong>BRNA Studio</strong><small>Neural network workbench</small></span>
+      </a>
+      <div class="top-actions">
+        <span id="saveStatus" class="save-status" role="status">Saved on this device</span>
+        <button id="installButton" class="button button-quiet" type="button" hidden>Install app</button>
+      </div>
+    </header>
+
+    <div class="app-shell">
+      <nav class="side-nav" aria-label="Studio sections">
+        <a class="nav-link active" href="#design" data-page="design"><span aria-hidden="true">◈</span> Design</a>
+        <a class="nav-link" href="#training" data-page="training"><span aria-hidden="true">▤</span> Training</a>
+        <a class="nav-link" href="#conversation" data-page="conversation"><span aria-hidden="true">◌</span> Conversation</a>
+        <a class="nav-link" href="#policy" data-page="policy"><span aria-hidden="true">⌁</span> Policy lab</a>
+        <div class="nav-note">
+          <strong>Prototype workspace</strong>
+          <span>Models and training data stay in this browser.</span>
+        </div>
+      </nav>
+
+      <main>
+        <section class="page active" id="page-design" data-page-panel="design">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">BRNA / MODEL DESIGN</p>
+              <h1>Design a network</h1>
+              <p>Design BRNA message-passing networks or optional dense models, then train and evaluate them locally.</p>
+            </div>
+            <div class="heading-actions">
+              <label class="sr-only" for="modelPicker">Select a network</label>
+              <select id="modelPicker" class="model-picker" aria-label="Select a network"></select>
+              <button id="newModel" class="button button-quiet" type="button">New network</button>
+              <button id="exportModel" class="button button-quiet" type="button">Export model</button>
+              <label class="button button-quiet file-button">Import model<input id="importModel" type="file" accept="application/json,.json" hidden></label>
+            </div>
+          </div>
+
+          <div class="design-grid">
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">ARCHITECTURE</p><h2>Network structure</h2></div></div>
+              <label class="field-label" for="modelName">Model name</label>
+              <input id="modelName" class="text-input" maxlength="48" value="BRNA prototype">
+              <label class="field-label" for="networkFamily">Network family</label>
+              <select id="networkFamily" class="text-input">
+                <option value="message-passing">BRNA message-passing</option>
+                <option value="dense">Dense network</option>
+              </select>
+              <div id="denseControls">
+                <div class="layer-list" id="layerList" aria-live="polite"></div>
+                <div class="control-row">
+                  <button id="addLayer" class="button button-quiet" type="button">+ Hidden layer</button>
+                  <button id="buildNetwork" class="button button-primary" type="button">Apply architecture</button>
+                </div>
+                <p class="field-help">Layer width is 1–32 neurons. Applying a changed architecture initializes new weights.</p>
+              </div>
+              <div id="messageControls" hidden>
+                <div class="message-config-grid">
+                  <label class="field-label" for="graphNodes">Nodes <input id="graphNodes" type="number" min="2" max="32" step="1" value="12"></label>
+                  <label class="field-label" for="graphFeatures">Features per node <input id="graphFeatures" type="number" min="1" max="8" step="1" value="4"></label>
+                  <label class="field-label" for="graphHidden">Hidden width <input id="graphHidden" type="number" min="1" max="32" step="1" value="16"></label>
+                  <label class="field-label" for="graphHops">Message-passing hops <input id="graphHops" type="number" min="0" max="8" step="1" value="3"></label>
+                  <label class="field-label" for="graphReadout">Readout node <input id="graphReadout" type="number" min="0" max="31" step="1" value="11"></label>
+                  <label class="field-label" for="graphIndegree">Incoming edges per node <input id="graphIndegree" type="number" min="1" max="31" step="1" value="4"></label>
+                  <label class="field-label" for="graphOutputs">Outputs <input id="graphOutputs" type="number" min="1" max="16" step="1" value="1"></label>
+                  <label class="field-label" for="graphCommunication">Communication
+                    <select id="graphCommunication" class="text-input">
+                      <option value="learned">Learned gates</option>
+                      <option value="quantized">Quantized messages</option>
+                      <option value="off">Off (ablation)</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="control-row">
+                  <button id="buildMessageNetwork" class="button button-primary" type="button">Apply BRNA architecture</button>
+                </div>
+                <p class="field-help">Inputs are node-major feature vectors. The default 12-node, 4-feature, 16-wide, 3-hop model has 849 trainable parameters.</p>
+              </div>
+            </div>
+
+            <div class="panel network-panel">
+              <div class="panel-heading"><div><p class="eyebrow">LIVE VIEW</p><h2>Network map</h2></div><span id="parameterCount" class="metric-chip"></span></div>
+              <div id="networkDiagram" class="network-diagram" role="img" aria-label="Neural network architecture"></div>
+              <div id="architectureSummary" class="architecture-summary"></div>
+            </div>
+          </div>
+
+          <div class="panel model-preview">
+            <div class="panel-heading"><div><p class="eyebrow">CURRENT MODEL</p><h2 id="activeModelTitle">BRNA prototype</h2></div><span class="local-badge">Local model</span></div>
+            <div class="preview-grid">
+              <div><span>Inputs</span><strong id="inputSummary">2 features</strong></div>
+              <div><span>Outputs</span><strong id="outputSummary">1 output</strong></div>
+              <div><span>Current loss</span><strong id="lossSummary">Not trained</strong></div>
+              <div><span>Fitness / accuracy</span><strong id="fitnessSummary">Not evaluated</strong></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-training" data-page-panel="training">
+          <div class="page-heading">
+            <div><p class="eyebrow">BRNA / TRAINING</p><h1>Train and evaluate</h1><p>Compare gradient training with fitness-ranked evolution on the same network.</p></div>
+          </div>
+          <div class="training-grid">
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">SUPERVISED LEARNING</p><h2>Example dataset</h2></div></div>
+              <p class="panel-copy">Edit the examples as JSON arrays of numeric <code>input</code> and <code>target</code> values. The demo data is an architecture check, not evidence of BRNA performance.</p>
+              <label class="field-label" for="datasetEditor">Training examples (JSON)</label>
+              <textarea id="datasetEditor" class="text-input text-area dataset-editor" rows="8" maxlength="100000" spellcheck="false" aria-describedby="datasetHelp"></textarea>
+              <p id="datasetHelp" class="field-help">Targets for one output must be between 0 and 1. Multi-output targets must be non-negative and sum to 1.</p>
+              <div class="control-row dataset-controls">
+                <button id="applyDataset" class="button button-quiet" type="button">Apply dataset</button>
+                <button id="useDemoDataset" class="button button-quiet" type="button">Use demo examples</button>
+              </div>
+              <div class="dataset-table-wrap">
+                <table class="dataset-table"><thead><tr><th>Input</th><th>Target</th></tr></thead><tbody id="datasetRows"></tbody></table>
+              </div>
+              <div class="training-controls">
+                <label class="field-label" for="learningRate">Learning rate <input id="learningRate" type="number" min="0.001" max="1" step="0.001" value="0.12"></label>
+                <label class="field-label" for="epochCount">Epochs <input id="epochCount" type="number" min="1" max="1000" step="1" value="100"></label>
+              </div>
+              <button id="trainSupervised" class="button button-primary full-button" type="button">Train on examples</button>
+              <p id="supervisedStatus" class="status-message" role="status">Ready to train.</p>
+            </div>
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">EVOLUTIONARY SEARCH</p><h2>Optimize by fitness</h2></div></div>
+              <p class="panel-copy">Each candidate is a set of network weights. Fitness is negative cross-entropy loss on the selected examples; fitter candidates reproduce with mutation.</p>
+              <div class="training-controls">
+                <label class="field-label" for="populationSize">Population <input id="populationSize" type="number" min="4" max="100" step="1" value="24"></label>
+                <label class="field-label" for="generationCount">Generations <input id="generationCount" type="number" min="1" max="500" step="1" value="40"></label>
+                <label class="field-label" for="mutationScale">Mutation scale <input id="mutationScale" type="number" min="0.001" max="2" step="0.01" value="0.15"></label>
+                <label class="field-label" for="evolutionSeed">Seed <input id="evolutionSeed" type="number" min="0" max="4294967295" step="1" value="1"></label>
+              </div>
+              <button id="trainEvolution" class="button button-secondary full-button" type="button">Evolve network weights</button>
+              <p id="evolutionStatus" class="status-message" role="status">Fitness is measured against the training examples only.</p>
+            </div>
+          </div>
+          <div class="panel results-panel">
+            <div class="panel-heading"><div><p class="eyebrow">EVALUATION</p><h2>Network outputs</h2></div><button id="evaluateNetwork" class="button button-quiet" type="button">Evaluate current model</button></div>
+            <div id="evaluationResults" class="evaluation-results"><p>Train or evaluate the model to view output probabilities and loss.</p></div>
+            <p class="disclaimer">Training examples are local demonstrations. Training loss on these examples does not establish generalization, safety, or fitness for real-world BRNA tasks.</p>
+          </div>
+        </section>
+
+        <section class="page" id="page-conversation" data-page-panel="conversation">
+          <div class="page-heading">
+            <div><p class="eyebrow">BRNA / CONVERSATIONAL LEARNING</p><h1>Teach by conversation</h1><p>Add examples to a local dialogue memory, then test retrieval with a new prompt.</p></div>
+          </div>
+          <div class="conversation-grid">
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">TEACH</p><h2>Save an example</h2></div></div>
+              <label class="field-label" for="teachPrompt">Prompt</label>
+              <textarea id="teachPrompt" class="text-input text-area" rows="3" maxlength="1000" placeholder="What should the assistant learn?"></textarea>
+              <label class="field-label" for="teachResponse">Your response</label>
+              <textarea id="teachResponse" class="text-input text-area" rows="4" maxlength="2000" placeholder="Enter the answer you want it to remember."></textarea>
+              <button id="saveExample" class="button button-primary" type="button">Teach this response</button>
+              <p id="teachStatus" class="status-message" role="status">Examples are stored on this device.</p>
+            </div>
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">TEST MEMORY</p><h2>Ask a question</h2></div><span id="exampleCount" class="metric-chip">0 examples</span></div>
+              <label class="field-label" for="chatPrompt">Your prompt</label>
+              <textarea id="chatPrompt" class="text-input text-area" rows="3" maxlength="1000" placeholder="Ask about something you taught."></textarea>
+              <button id="askMemory" class="button button-secondary" type="button">Find learned response</button>
+              <div id="chatResponse" class="chat-response" aria-live="polite">Responses come only from examples you have taught.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">LOCAL DATA</p><h2>Taught examples</h2></div><button id="clearExamples" class="button button-danger" type="button">Clear all</button></div>
+            <div id="exampleList" class="example-list"></div>
+            <p class="disclaimer">This first browser version uses example retrieval, not a generative language model. Adding examples changes conversation memory; it does not change neural-network weights.</p>
+          </div>
+        </section>
+
+        <section class="page" id="page-policy" data-page-panel="policy">
+          <div class="page-heading">
+            <div><p class="eyebrow">BRNA / POLICY LEARNING</p><h1>Reinforcement learning lab</h1><p>Train a multi-output network from contextual action choices and observed rewards.</p></div>
+          </div>
+          <div class="policy-grid">
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">CONTEXT</p><h2>Describe a state</h2></div></div>
+              <p class="panel-copy">Enter one finite feature value for each input neuron. Choose an action, observe its reward in your task, then submit that feedback.</p>
+              <label class="field-label" for="policyFeatures">State features <span id="policyFeatureHint" class="inline-help">2 values</span></label>
+              <input id="policyFeatures" class="text-input" value="0.2, 0.8" autocomplete="off">
+              <button id="choosePolicyAction" class="button button-primary" type="button">Choose action</button>
+              <div id="selectedAction" class="action-result" aria-live="polite">No action selected.</div>
+              <label class="field-label" for="observedReward">Observed reward <span class="inline-help">Use your task’s reward scale</span></label>
+              <input id="observedReward" class="text-input" type="number" step="0.1" value="1">
+              <button id="submitReward" class="button button-secondary" type="button">Learn from reward</button>
+              <p id="policyStatus" class="status-message" role="status">Policy learning uses a contextual bandit update; it does not model future state transitions yet.</p>
+            </div>
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">POLICY OUTPUTS</p><h2>Action probabilities</h2></div><span id="actionCount" class="metric-chip">0 actions</span></div>
+              <div id="policyOutputs" class="policy-outputs"></div>
+              <div class="fitness-note"><strong>Reward baseline</strong><span id="rewardBaseline">0.00</span><p>A running baseline makes positive and negative reward feedback relative to recent outcomes.</p></div>
+              <div class="button-row">
+                <button id="resetPolicy" class="button button-quiet" type="button">Reset reward learning</button>
+                <button id="exportPolicy" class="button button-quiet" type="button">Export model</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
