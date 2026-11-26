@@ -1,0 +1,25 @@
+timestamp=2026-11-26T04:42:37Z
+git_commit=a2ab4d84d48efbe02090f414016505caa1c2438e
+git_dirty=true
+v24.22.2
+
+> test:web
+> node --test web/*.test.js
+
+✔ architecture parameter count and model JSON round-trip (6.005732ms)
+✔ supervised gradient training lowers XOR loss (106.803193ms)
+✔ BRNA message-passing default matches the prototype and round-trips (39.44823ms)
+✔ message-passing networks train, evolve, and learn from reward feedback (37.563725ms)
+✔ communication-off ablation leaves learned gate weights unchanged (0.999354ms)
+✔ invalid inputs and datasets fail explicitly (0.915197ms)
+✔ evolution preserves best candidate and reproduces deterministically (2.400517ms)
+✔ policy learning moves probability toward a rewarded action (1.279867ms)
+✔ conversation learning retrieves taught responses and does not invent answers (1.723143ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 351.732433

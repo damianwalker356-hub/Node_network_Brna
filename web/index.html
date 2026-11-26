@@ -28,6 +28,7 @@
         <a class="nav-link active" href="#design" data-page="design"><span aria-hidden="true">◈</span> Design</a>
         <a class="nav-link" href="#training" data-page="training"><span aria-hidden="true">▤</span> Training</a>
         <a class="nav-link" href="#conversation" data-page="conversation"><span aria-hidden="true">◌</span> Conversation</a>
+        <a class="nav-link" href="#agents" data-page="agents"><span aria-hidden="true">⟷</span> Agent network</a>
         <a class="nav-link" href="#policy" data-page="policy"><span aria-hidden="true">⌁</span> Policy lab</a>
         <div class="nav-note">
           <strong>Prototype workspace</strong>
@@ -182,24 +183,127 @@
           <div class="panel">
             <div class="panel-heading">
               <div><p class="eyebrow">SELF-HOSTED GENERATIVE MODEL</p><h2>Train and run on this computer</h2></div>
-              <span id="localModelBadge" class="metric-chip">Checking local server…</span>
+              <span id="localModelBadge" class="metric-chip">Checking local model…</span>
             </div>
-            <p id="localModelStatus" class="panel-copy">The local model server stores its model and examples on this computer. The GitHub Pages demo does not run inference; start the desktop app to enable local generation.</p>
+            <p id="localModelStatus" class="panel-copy">A compact model can train and generate in this browser without a separate server. Run the optional local Python server for the larger RNN and agent features.</p>
             <div class="training-controls">
               <label class="field-label" for="modelTrainingEpochs">Training epochs <input id="modelTrainingEpochs" type="number" min="1" max="50" value="3"></label>
-              <label class="field-label file-button" for="modelCorpusFile">Text corpus (.txt) <input id="modelCorpusFile" type="file" accept=".txt,text/plain"></label>
+              <label class="field-label file-button" for="modelCorpusFile">Training document (.txt, .md, .docx, .pdf) <input id="modelCorpusFile" type="file" accept=".txt,.md,.markdown,.docx,.pdf,text/plain,application/pdf"></label>
             </div>
             <div class="button-row">
               <button id="trainFromExamples" class="button button-primary" type="button" disabled>Train from taught examples</button>
               <button id="trainFromCorpus" class="button button-quiet" type="button" disabled>Train from selected text</button>
               <button id="refreshLocalModel" class="button button-quiet" type="button">Check server</button>
             </div>
-            <p id="modelTrainingStatus" class="status-message" role="status">Training data stays on this computer. This small from-scratch character model is experimental and needs examples before it can generate useful text.</p>
+            <p id="modelTrainingStatus" class="status-message" role="status">Training data stays in this browser profile. This small from-scratch character model is experimental and needs examples before it can generate useful text.</p>
           </div>
           <div class="panel">
             <div class="panel-heading"><div><p class="eyebrow">LOCAL DATA</p><h2>Taught examples</h2></div><button id="clearExamples" class="button button-danger" type="button">Clear all</button></div>
             <div id="exampleList" class="example-list"></div>
-            <p class="disclaimer">Taught examples are stored locally. The self-hosted character model can be trained on these examples or a text corpus; it is a small experimental model, not a general-purpose large language model.</p>
+            <p class="disclaimer">Taught examples are stored in this browser. The browser-local model trains on these examples or a text corpus without a server; the optional Python server provides a separate RNN model and agent features. Neither is a general-purpose large language model.</p>
+          </div>
+        </section>
+
+        <section class="page" id="page-agents" data-page-panel="agents">
+          <div class="page-heading">
+            <div><p class="eyebrow">BRNA / COOPERATIVE MODEL AGENTS</p><h1>Build an agent network</h1><p>Create independent from-scratch models, train them on shared data, and let them exchange messages in a bounded collective turn.</p></div>
+          </div>
+          <div class="design-grid">
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">NODE BUILDER</p><h2>Create a specialist model</h2></div></div>
+              <label class="field-label" for="agentName">Agent name</label>
+              <input id="agentName" class="text-input" maxlength="48" value="Planner">
+              <label class="field-label" for="agentRole">Role and instructions</label>
+              <textarea id="agentRole" class="text-input text-area" rows="3" maxlength="240">Suggest a useful answer to the user's task.</textarea>
+              <label class="field-label" for="agentHiddenSize">Model hidden width <input id="agentHiddenSize" type="number" min="8" max="128" step="1" value="32"></label>
+              <button id="createAgentNode" class="button button-primary" type="button" disabled>Create model node</button>
+              <p id="agentBuilderStatus" class="status-message" role="status">Connect the local BRNA Studio server to create persistent agent models.</p>
+            </div>
+            <div class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">CURRENT NETWORK</p><h2>Independent model nodes</h2></div><span id="agentNodeCount" class="metric-chip">0 nodes</span></div>
+              <div id="agentNodeList" class="example-list" aria-live="polite"></div>
+              <p class="field-help">Nodes share the same training corpus but keep separate model parameters. Collective thinking requires at least two trained nodes.</p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">SHARED TRAINING</p><h2>Train every model node</h2></div></div>
+            <p class="panel-copy">Training data is applied separately to each node's from-scratch character model. Shared text is capped at 50,000 characters; this is a small experimental system, not frontier-scale training.</p>
+            <div class="design-grid">
+              <label class="field-label" for="reasoningTaskSelect">Procedural reasoning task
+                <select id="reasoningTaskSelect" class="text-input" disabled><option value="">Checking local Reasoning Gym…</option></select>
+              </label>
+              <label class="field-label" for="reasoningExampleCount">Generated examples <input id="reasoningExampleCount" type="number" min="1" max="128" step="1" value="16"></label>
+              <label class="field-label" for="reasoningSeed">Dataset seed <input id="reasoningSeed" type="number" min="0" max="4294967295" step="1" value="42"></label>
+              <div>
+                <button id="trainReasoningDataset" class="button button-secondary" type="button" disabled>Generate and train every node</button>
+                <p id="reasoningDatasetStatus" class="status-message" role="status">Reasoning Gym is an optional local dependency.</p>
+              </div>
+            </div>
+            <label class="field-label" for="agentTrainingText">Training corpus</label>
+            <textarea id="agentTrainingText" class="text-input text-area" rows="6" maxlength="50000" placeholder="Paste text that every agent should learn."></textarea>
+            <div class="training-controls">
+              <label class="field-label" for="agentTrainingEpochs">Epochs <input id="agentTrainingEpochs" type="number" min="1" max="50" value="3"></label>
+              <label class="field-label file-button" for="agentTrainingFile">Upload .txt, .md, .docx, or .pdf <input id="agentTrainingFile" type="file" accept=".txt,.md,.markdown,.docx,.pdf,text/plain,application/pdf"></label>
+            </div>
+            <div class="button-row">
+              <button id="trainAgentNetwork" class="button button-primary" type="button" disabled>Train from text</button>
+              <button id="uploadAgentCorpus" class="button button-quiet" type="button" disabled>Train from selected file</button>
+            </div>
+            <p id="agentTrainingStatus" class="status-message" role="status">Training requires at least one model node.</p>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">SHARED THOUGHT</p><h2>Run a collective turn</h2></div></div>
+            <p class="panel-copy">Each model produces a private draft, then every model gets a shared pass with the other nodes' drafts. The last node's revised text is returned as the network response.</p>
+            <label class="field-label" for="agentTaskPrompt">Task prompt</label>
+            <textarea id="agentTaskPrompt" class="text-input text-area" rows="3" maxlength="4000" placeholder="Describe the question for your agent network."></textarea>
+            <button id="runAgentNetwork" class="button button-primary" type="button" disabled>Run collective thinking</button>
+            <div id="agentCollectiveOutput" class="example-list" aria-live="polite"></div>
+            <div class="training-controls">
+              <label class="field-label" for="agentEpisodeReward">Episode reward <input id="agentEpisodeReward" type="number" min="-1" max="1" step="0.1" value="1"></label>
+              <button id="reinforceAgentNetwork" class="button button-secondary" type="button" disabled>Reinforce this episode</button>
+            </div>
+            <p id="agentReinforcementStatus" class="status-message" role="status">Reward feedback updates the sampled responses with discounted episodic REINFORCE; evaluate carefully.</p>
+            <p class="disclaimer">This local CPU-oriented prototype uses character-level RNN nodes and simple episodic policy gradients. It does not provide frontier-model language ability, robust reasoning, or a validated RL benchmark. Training quality depends on user data and available compute.</p>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">DIFFERENTIABLE LATENT GRAPH</p><h2>Train graph transforms and gates</h2></div><span id="agentGraphSummary" class="metric-chip">Graph unavailable</span></div>
+            <p class="panel-copy">Each trained model encodes its context as a bounded latent message. The directed graph learns transforms and edge gates from labeled actions. Supply one text context per current agent for every example.</p>
+            <label class="field-label" for="agentGraphExamples">Labeled examples (JSON)</label>
+            <textarea id="agentGraphExamples" class="text-input text-area" rows="5" maxlength="100000" placeholder='[{"contexts":["sensor context","critic context"],"action":0},{"contexts":["another sensor context","another critic context"],"action":1}]'></textarea>
+            <div class="training-controls">
+              <label class="field-label" for="agentGraphEpochs">Training epochs <input id="agentGraphEpochs" type="number" min="1" max="100" step="1" value="10"></label>
+              <button id="trainAgentGraph" class="button button-primary" type="button" disabled>Train graph gates</button>
+            </div>
+            <p id="agentGraphTrainingStatus" class="status-message" role="status">Train every model node before fitting the latent graph.</p>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">CLOSED-LOOP POLICY</p><h2>Run a graph action episode</h2></div></div>
+            <p class="panel-copy">Start an episode, request a graph-selected action, evaluate it in your software task, then submit its reward before continuing. This service does not execute the task environment.</p>
+            <label class="field-label" for="agentGraphPrompt">Step prompt</label>
+            <textarea id="agentGraphPrompt" class="text-input text-area" rows="3" maxlength="4000" placeholder="Describe the current task state for the agent nodes."></textarea>
+            <div class="training-controls">
+              <label class="field-label" for="agentGraphTokens">Response tokens <input id="agentGraphTokens" type="number" min="1" max="128" step="1" value="32"></label>
+              <button id="startAgentGraphEpisode" class="button button-quiet" type="button" disabled>Start episode</button>
+              <button id="stepAgentGraph" class="button button-primary" type="button" disabled>Get action</button>
+            </div>
+            <div id="agentGraphStepOutput" class="example-list" aria-live="polite"></div>
+            <div class="training-controls">
+              <label class="field-label" for="agentGraphReward">Observed reward (-1 to 1) <input id="agentGraphReward" type="number" min="-1" max="1" step="0.1" value="1"></label>
+              <label class="field-label" for="agentGraphDone">Episode status
+                <select id="agentGraphDone" class="text-input"><option value="false">Continue episode</option><option value="true">Terminal reward</option></select>
+              </label>
+              <button id="submitAgentGraphReward" class="button button-secondary" type="button" disabled>Submit reward</button>
+            </div>
+            <p id="agentGraphEpisodeStatus" class="status-message" role="status">Graph actions require trained nodes and an active episode.</p>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">VERIFIABLE REWARD</p><h2>Run a generated reasoning task</h2></div></div>
+            <p class="panel-copy">Generate a seeded task, run the current agent network, score its response with the task verifier, and apply that score as an RL reward. The generated item is independently reproducible from task, seed, and index.</p>
+            <div class="training-controls">
+              <label class="field-label" for="reasoningEpisodeIndex">Task index <input id="reasoningEpisodeIndex" type="number" min="0" max="127" step="1" value="0"></label>
+              <button id="runVerifiedEpisode" class="button button-primary" type="button" disabled>Run and learn from verified reward</button>
+            </div>
+            <div id="verifiedEpisodeOutput" class="chat-response" aria-live="polite">A verified task episode requires at least two trained model nodes.</div>
           </div>
         </section>
 

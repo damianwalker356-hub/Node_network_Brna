@@ -1,0 +1,76 @@
+{
+  "run_id": "20261126T051255Z-agent-network-verification",
+  "timestamp": "2026-11-26T05:13:08Z",
+  "git_commit": "a2ab4d84d48efbe02090f414016505caa1c2438e",
+  "git_dirty": true,
+  "settings": {
+    "python_command": "PYTHONPATH=src:. python -m pytest -q",
+    "pytest_addopts": "-ra -m 'not slow'",
+    "browser_command": "npm run test:web",
+    "javascript_syntax_command": "node --check web/app.js",
+    "lint_command": "ruff check src/brna/agent_network.py src/brna/language_model.py src/brna/server.py tests/test_agent_network.py tests/test_studio_server.py",
+    "python_version": "3.14.2",
+    "numpy_version": "2.5.5",
+    "pytest_version": "9.2.0",
+    "node_version": "v24.22.2",
+    "available_cpu_cores": 2,
+    "available_memory_mib": 832,
+    "nvidia_gpu_detected": false,
+    "test_seeds": {
+      "policy_gradient_model": 13,
+      "agent_network": 8,
+      "planner": 1,
+      "reviewer": 2
+    }
+  },
+  "code_sha256": {
+    "src/brna/agent_network.py": "765a942cff6853b181dde55396444675931a7dbcc7d29204d9489a7685e17b7e",
+    "src/brna/language_model.py": "47d23de69b5ee9d150b797f98a433be2eb37a2fb8a4862194831c997929f4128",
+    "src/brna/server.py": "6e3cf24b68aed3e919ee0d38233e4d0312f23ead06864fba0593ef9c405625a6",
+    "web/app.js": "32960ddb0d7560452561d404e9d2289252228c843b0eafa98117fdfd179801c7",
+    "web/index.html": "c731e238cb681a3e1ed238f41dc5f9b389908a62efa2a965f7bce6a6ca90343d",
+    "web/service-worker.js": "0c7cc00377a88c603e4b7d9f2166f90406aa30031e37a3e1dc88264686f3cee5",
+    "tests/test_agent_network.py": "44df06a381e8af35fd1c609ddb80493cb2fc6ba6182c32846c1c51a12a7a1621",
+    "tests/test_studio_server.py": "7c7a093087ffed3a77f125a4ac13a45748385ab6073ffb591de549974ce47cd6",
+    "tests/test_language_model.py": "07aa77fac79d2e408a1842a2120ad78968705378601743cc37f049edef3d8aad",
+    "pyproject.toml": "b3afc46b70b10c528fb27f8e710123ad1c73a329775596cf8d1b38a7d8ffe7c9"
+  },
+  "results": {
+    "python_concurrent_attempt": {
+      "status": "terminated",
+      "detail": "The process was terminated while browser and lint checks ran concurrently.",
+      "raw_output": "results/vv/20261126T051000Z-agent-network-python.txt"
+    },
+    "python_isolated_rerun": {
+      "passed": 40,
+      "failed": 0,
+      "deselected": 1,
+      "raw_output": "results/vv/20261126T051255Z-agent-network-python.txt"
+    },
+    "browser": {
+      "passed": 9,
+      "failed": 0,
+      "raw_output": "results/vv/20261126T051308Z-agent-network-web.txt"
+    },
+    "ruff": {
+      "result": "passed",
+      "raw_output": "results/vv/20261126T051308Z-agent-network-lint.txt"
+    },
+    "javascript_syntax": {
+      "result": "passed",
+      "raw_output": "results/vv/20261126T051308Z-agent-network-lint.txt"
+    },
+    "git_diff_check": {
+      "result": "passed",
+      "raw_output": "results/vv/20261126T051308Z-agent-network-lint.txt"
+    }
+  },
+  "limitations": [
+    "The working tree was dirty during verification.",
+    "The interpreter and dependency versions differ from the versions declared in pyproject.toml; this checkout specifies Python 3.12 and pins NumPy 2.2.3 and pytest 8.3.5.",
+    "One slow Python test was deselected.",
+    "The agent model is a bounded character-level Elman RNN; no language-quality or frontier-model comparison was performed.",
+    "The reward-learning checks demonstrate likelihood movement on synthetic examples, not task-level RL performance.",
+    "The measured environment had limited available CPU and memory and no detected NVIDIA GPU."
+  ]
+}

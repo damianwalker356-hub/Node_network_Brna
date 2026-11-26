@@ -24,3 +24,19 @@ R-CREATURE-01,Creature foraging episodes provide bounded observations actions re
 R-STUDIO-01,Train and persist a bounded Unicode character language model,Project integration,Ready for review,test_training_reduces_loss_and_generates_known_characters
 R-STUDIO-02,Serve the browser studio and local model API on loopback,Project integration,Ready for review,test_server_serves_studio_and_reports_model_status
 R-STUDIO-03,Package desktop builds into platform-specific archives,Project integration,Ready for review,test_desktop_archive_contains_only_packaged_application_files
+R-UPLOAD-01,Extract uploaded TXT MD DOCX and PDF training corpora and reject unsupported formats,Project integration,Ready for review,test_extract_training_text_supports_text_and_docx
+R-AGENT-NET-01,Apply positive and negative episode advantages to model completion likelihood,Project integration request,test_positive_and_negative_episode_advantages_change_completion_likelihood
+R-AGENT-NET-02,Share messages between independently persisted role-based model nodes and reinforce complete episodes,Project integration request,test_agents_share_messages_learn_from_episode_feedback_and_persist
+R-AGENT-NET-03,Create train run and reinforce the agent network through the local API,Project integration request,test_server_builds_trains_and_reinforces_collective_agent_network
+R-AGENT-NET-04,Train agent nodes from supported document uploads,Project integration request,test_server_trains_agent_nodes_from_uploaded_markdown
+R-REASONING-GYM-01,Generate reproducible examples from curated Reasoning Gym tasks and verify reference answers,Project integration request,test_curated_reasoning_gym_tasks_generate_reproducible_verifiable_examples
+R-REASONING-GYM-02,Train agent nodes on generated tasks and update them from verifier-scored episodes,Project integration request,test_generated_dataset_trains_all_nodes_and_verifier_reward_updates_episode
+R-REASONING-GYM-03,Expose curated Reasoning Gym task catalog and workflows via local API,Project integration request,test_server_exposes_curated_reasoning_tasks_and_seeds_training
+R-HYBRID-01,Connect role-seeded AI nodes to digital translators and a simulated recurrent reservoir,B-RNA software architecture,test_closed_loop_uses_bounded_feedback_and_is_deterministic_without_noise
+R-HYBRID-02,Support adaptive and fixed digital translators with task-gradient updates,B-RNA adaptive-translator hypothesis,test_adaptive_translators_train_while_fixed_translators_remain_fixed
+R-HYBRID-03,Record paired software controls and mark culture-dependent claims unmeasured,B-RNA evaluation hypotheses,test_experiment_pairs_task_data_and_marks_biological_hypothesis_unmeasured
+R-HYBRID-04,Match the silicon-only comparator to the hybrid system parameter budget,B-RNA equal-budget evaluation,test_silicon_control_matches_hybrid_total_parameter_budget_exactly
+R-AGENT-GRAPH-01,Wrap each trained role model as a bounded latent graph node,B-RNA AI-node integration,test_user_language_agents_emit_bounded_role_conditioned_latents
+R-AGENT-GRAPH-02,Train graph transforms and directed edge gates from task labels,B-RNA differential graph training,test_differentiable_graph_trainer_updates_edge_gates_and_persists
+R-AGENT-GRAPH-03,Update graph-selected actions from discounted episodic rewards,B-RNA closed-loop policy,test_closed_loop_policy_optimizer_applies_discounted_episode_rewards
+R-AGENT-GRAPH-04,Expose graph training and caller-driven episodes through the local API and persist graph checkpoints,B-RNA agent graph service,test_server_trains_and_runs_user_agents_through_persisted_latent_graph

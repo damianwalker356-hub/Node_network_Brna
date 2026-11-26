@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-11-26T04:42:37Z",
+  "git_commit": "a2ab4d84d48efbe02090f414016505caa1c2438e",
+  "git_dirty": true,
+  "seed": null,
+  "settings": {
+    "python_command": "PYTHONPATH=src:. pytest -q",
+    "python_addopts": "-ra -m 'not slow'",
+    "browser_command": "npm run test:web",
+    "python_version": "3.14.2",
+    "node_version": "v24.22.2",
+    "numpy_version": "2.5.5",
+    "pypdf_version": "5.1.0",
+    "pytest_version": "9.2.0"
+  },
+  "code_sha256": {
+    "pyproject.toml": "b3afc46b70b10c528fb27f8e710123ad1c73a329775596cf8d1b38a7d8ffe7c9",
+    "src/brna/server.py": "e82add4e5c398451619d9906f5e0ef6bcdb044b6cdd1f343a69d5952e8891b1a",
+    "src/brna/data_ingestion.py": "80469fd446cc538d8f07992d9b523fbe8aacf7ae2f43b62c525e098623580762",
+    "web/app.js": "d76e7672588a455eea590c1c70914d90d8053e05b706a0bd0ca499652185de00",
+    "web/index.html": "0485b95abe2704b01099b05b7f6733ac7b04132115c70df0856928b0f34cf0e7",
+    "tests/test_data_ingestion.py": "94c9d8e5778f2cd45cb7c0935c242b59e8c7c91f9fd0ccba1d197f7fcf3ff8bd",
+    "tests/test_studio_server.py": "5bafd500449d14d10e71c84ea962673427da209b7ad51bacde7284b0a19b9bef"
+  },
+  "results": {
+    "python": {
+      "passed": 35,
+      "deselected": 1,
+      "failed": 0,
+      "raw_output": "results/vv/python-20261126.txt"
+    },
+    "browser": {
+      "passed": 9,
+      "failed": 0,
+      "raw_output": "results/vv/web-20261126.txt"
+    }
+  },
+  "limitations": [
+    "The worktree was dirty when this run was measured.",
+    "The active NumPy and pytest versions differed from the versions pinned in pyproject.toml.",
+    "One pytest slow test was deselected.",
+    "No independent software assurance or NPR compliance determination was performed."
+  ]
+}

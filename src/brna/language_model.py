@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -30,6 +31,7 @@ class CharacterLanguageModel:
             raise ValueError(f"hidden_size must be from {MIN_HIDDEN_SIZE} to {MAX_HIDDEN_SIZE}")
         self.hidden_size = hidden_size
         self.trained_characters = 0
+        self.reinforcement_updates = 0
         self.vocabulary: list[str] = []
         self._rng = np.random.default_rng(seed)
         self.input_weights = np.zeros((SPECIAL_TOKENS, hidden_size))
@@ -155,6 +157,8 @@ class CharacterLanguageModel:
                 version=np.asarray([2], dtype=np.int64),
                 hidden_size=np.asarray([self.hidden_size], dtype=np.int64),
                 trained_characters=np.asarray([self.trained_characters], dtype=np.int64),
+                reinforcement_updates=np.asarray([self.reinforcement_updates], dtype=np.int64),
+                rng_state=np.asarray([json.dumps(self._rng.bit_generator.state)]),
                 vocabulary=np.asarray(self.vocabulary, dtype=np.str_),
                 input_weights=self.input_weights,
                 recurrent_weights=self.recurrent_weights,
@@ -180,6 +184,15 @@ class CharacterLanguageModel:
                     raise ValueError("model vocabulary is invalid")
                 model.vocabulary = vocabulary
                 model.trained_characters = int(data["trained_characters"][0])
+                if "reinforcement_updates" in data.files:
+                    model.reinforcement_updates = int(data["reinforcement_updates"][0])
+                rng_state = (
+                    json.loads(str(data["rng_state"][0]))
+                    if "rng_state" in data.files
+                    else None
+                )
+                if model.reinforcement_updates < 0:
+                    raise ValueError("reinforcement update count must not be negative")
                 if model.trained_characters < 0 or (model.trained_characters and not vocabulary):
                     raise ValueError("training metadata does not match the model vocabulary")
                 model._resize_parameters(len(vocabulary) + SPECIAL_TOKENS)
@@ -194,9 +207,128 @@ class CharacterLanguageModel:
                     if value.shape != expected.shape or not np.isfinite(value).all():
                         raise ValueError("model parameters have invalid shape or values")
                     expected[...] = value
+                if rng_state is not None:
+                    model._rng.bit_generator.state = rng_state
                 return model
         except (OSError, KeyError, IndexError) as exc:
             raise ValueError(f"could not read language-model file: {exc}") from exc
+
+    def completion_log_probability(self, prompt: str, completion: str) -> float:
+        if not isinstance(prompt, str) or not isinstance(completion, str):
+            raise TypeError("prompt and completion must be strings")
+        if not completion:
+            raise ValueError("completion must not be empty")
+        if self.trained_characters == 0:
+            raise RuntimeError("model has not been trained yet")
+        self._extend_vocabulary(prompt + completion)
+        prompt_ids = self._encode(prompt)
+        completion_ids = self._encode(completion)
+        hidden = np.zeros(self.hidden_size)
+        token = BOS
+        for value in prompt_ids:
+            hidden = self._step(token, hidden)
+            token = value
+        hidden = self._step(token, hidden)
+        log_probability = 0.0
+        for value in completion_ids:
+            probabilities = _softmax(hidden @ self.output_weights + self.output_bias)
+            log_probability += float(np.log(max(probabilities[value], 1e-12)))
+            hidden = self._step(value, hidden)
+        return log_probability / len(completion_ids)
+
+    def encode_context(self, text: str) -> np.ndarray:
+        """Return the deterministic final hidden state for a bounded text context."""
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("context must be a non-empty string")
+        if self.trained_characters == 0:
+            raise RuntimeError("model has not been trained yet")
+        hidden = np.zeros(self.hidden_size)
+        token = BOS
+        for value in self._encode(text[-MAX_SEQUENCE_LENGTH:]):
+            hidden = self._step(token, hidden)
+            token = value
+        return self._step(token, hidden).copy()
+
+    def reinforce(
+        self,
+        prompt: str,
+        completion: str,
+        advantage: float,
+        *,
+        learning_rate: float = 0.01,
+    ) -> float:
+        """Apply a clipped REINFORCE update to one sampled completion."""
+        if not isinstance(prompt, str) or not isinstance(completion, str):
+            raise TypeError("prompt and completion must be strings")
+        if not completion:
+            raise ValueError("completion must not be empty")
+        if self.trained_characters == 0:
+            raise RuntimeError("model has not been trained yet")
+        if (
+            isinstance(advantage, bool)
+            or not isinstance(advantage, (int, float))
+            or not np.isfinite(advantage)
+            or not -1 <= advantage <= 1
+        ):
+            raise ValueError("advantage must be finite and between -1 and 1")
+        if (
+            isinstance(learning_rate, bool)
+            or not isinstance(learning_rate, (int, float))
+            or not np.isfinite(learning_rate)
+            or not 0 < learning_rate <= 0.1
+        ):
+            raise ValueError("learning_rate must be finite and between 0 and 0.1")
+        if advantage == 0:
+            self.reinforcement_updates += 1
+            return self.completion_log_probability(prompt, completion)
+
+        self._extend_vocabulary(prompt + completion)
+        prompt_ids = self._encode(prompt)
+        completion_ids = self._encode(completion)
+        inputs = [BOS, *prompt_ids, *completion_ids[:-1]]
+        hidden_states = [np.zeros(self.hidden_size)]
+        probabilities = []
+        first_target_index = len(prompt_ids)
+        for token in inputs:
+            hidden_states.append(self._step(token, hidden_states[-1]))
+        for target_index, target in enumerate(completion_ids):
+            output_index = first_target_index + target_index
+            probs = _softmax(
+                hidden_states[output_index + 1] @ self.output_weights + self.output_bias
+            )
+            probabilities.append((probs, target, output_index))
+
+        gradients = tuple(np.zeros_like(parameter) for parameter in self._parameters())
+        input_gradient, recurrent_gradient, hidden_bias_gradient, output_gradient, output_bias_gradient = gradients
+        next_hidden_gradient = np.zeros(self.hidden_size)
+        loss = 0.0
+        first_output_index = first_target_index
+        for output_index in range(len(inputs) - 1, -1, -1):
+            target_offset = output_index - first_output_index
+            if 0 <= target_offset < len(probabilities):
+                probs, target, _ = probabilities[target_offset]
+                loss -= float(np.log(max(probs[target], 1e-12)))
+                probs[target] -= 1
+                output_gradient += np.outer(hidden_states[output_index + 1], probs)
+                output_bias_gradient += probs
+                hidden_gradient = probs @ self.output_weights.T + next_hidden_gradient
+            else:
+                hidden_gradient = next_hidden_gradient
+            activation_gradient = hidden_gradient * (
+                1 - hidden_states[output_index + 1] ** 2
+            )
+            input_gradient[inputs[output_index]] += activation_gradient
+            recurrent_gradient += np.outer(hidden_states[output_index], activation_gradient)
+            hidden_bias_gradient += activation_gradient
+            next_hidden_gradient = activation_gradient @ self.recurrent_weights.T
+
+        count = len(completion_ids)
+        norm = np.sqrt(sum(float(np.sum(gradient * gradient)) for gradient in gradients))
+        scale = min(1.0, 5.0 / max(norm, 1e-12)) / count
+        for parameter, gradient in zip(self._parameters(), gradients, strict=True):
+            parameter -= learning_rate * float(advantage) * scale * gradient
+        self.reinforcement_updates += 1
+        return -loss / count
 
     def _parameters(self) -> Sequence[np.ndarray]:
         return (

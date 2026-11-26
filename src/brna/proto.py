@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 N, DX = 12, 4
@@ -40,8 +42,19 @@ class Adam:
 
 
 class NodeNet:
-    def __init__(self, rng, d=16, T=3, mode="vector", out=11):
+    def __init__(self, rng, d=16, T=3, mode="vector", out=11, roles=None):
         self.d, self.T, self.mode, self.out = d, T, mode, out
+        if roles is None:
+            self.roles = tuple(f"node-{index}" for index in range(N))
+        else:
+            if (
+                not isinstance(roles, Sequence)
+                or isinstance(roles, str)
+                or len(roles) != N
+                or any(not isinstance(role, str) or not role.strip() for role in roles)
+            ):
+                raise ValueError(f"roles must contain {N} non-empty role names")
+            self.roles = tuple(role.strip() for role in roles)
         self.adj = make_adj(rng)
 
         def gaussian(*shape, scale=1.0):
@@ -49,17 +62,29 @@ class NodeNet:
 
         self.Win = gaussian(DX, d)
         self.E = rng.normal(0, 0.1, (N, d))
+        if roles is not None:
+            unique_roles = tuple(dict.fromkeys(self.roles))
+            role_vectors = rng.normal(0, 0.1, (len(unique_roles), d))
+            role_indices = {role: index for index, role in enumerate(unique_roles)}
+            self.E = np.stack(
+                [
+                    role_vectors[role_indices[role]]
+                    + rng.normal(0, 0.01, d)
+                    for role in self.roles
+                ]
+            )
         self.Ws = gaussian(d, d)
         self.Wm = gaussian(d, d)
         self.b = np.zeros(d)
         self.wo = gaussian(d)
         self.bo = np.zeros(1)
-        self.G = np.zeros((N, N))
+        self.edge_sources, self.edge_targets = np.nonzero(self.adj)
+        self.G = np.zeros(len(self.edge_sources))
         self.ps = [self.Win, self.E, self.Ws, self.Wm, self.b, self.wo, self.bo, self.G]
         self.opt = Adam(self.ps)
 
     def nparams(self):
-        return sum(p.size for p in self.ps[:-1]) + int(self.adj.sum())
+        return sum(p.size for p in self.ps)
 
     def q(self, state):
         return np.round(state * 3) / 3 if self.mode == "quantized" else state
@@ -67,7 +92,9 @@ class NodeNet:
     def gate(self):
         if self.mode == "nocomm":
             return 0 * self.adj
-        return self.adj * sigmoid(self.G)
+        gates = np.zeros_like(self.adj)
+        gates[self.edge_sources, self.edge_targets] = sigmoid(self.G)
+        return gates
 
     def fwd(self, x):
         active_gate = self.gate()
@@ -88,7 +115,7 @@ class NodeNet:
     def predict(self, x):
         return self.fwd(x)[4] > 0
 
-    def train_step(self, x, y):
+    def train_step(self, x, y, *, return_input_gradient=False):
         states, messages, aggregates, active_gate, logits = self.fwd(x)
         batch = len(x)
         probability = sigmoid(logits)
@@ -113,9 +140,14 @@ class NodeNet:
         gWin = np.einsum("bnx,bnd->xd", x, dz0)
         gE = dz0.sum(0)
         gate_value = sigmoid(self.G)
-        gG = dagg_gate * self.adj * gate_value * (1 - gate_value)
+        gG = (
+            dagg_gate[self.edge_sources, self.edge_targets]
+            * gate_value
+            * (1 - gate_value)
+        )
         if self.mode == "nocomm":
             gG = 0 * gG
+        input_gradient = dz0 @ self.Win.T
         original_wo = self.wo.copy()
         self.opt.step([gWin, gE, gWs, gWm, gb, gwo, gbo, gG])
         self.wo[...] = original_wo
@@ -124,6 +156,9 @@ class NodeNet:
         post_dl = (post_probability - y) / batch
         post_gwo = post_states[-1][:, self.out].T @ post_dl
         self.wo -= self.opt.lr * post_gwo
+        if return_input_gradient:
+            return input_gradient
+        return None
 
 
 class MLP:

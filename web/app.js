@@ -10,8 +10,10 @@ import {
   retrieveReply,
   validateArchitecture,
 } from "./core.js";
+import { LocalCharacterModel } from "./local-model.js";
 
 const STORAGE_KEY = "brna-studio-v1";
+const LOCAL_TEXT_MODEL_STORAGE_KEY = "brna-local-text-model-v1";
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const navLinks = $$(".nav-link");
@@ -29,6 +31,26 @@ let policy = { baseline: 0, updates: 0, pending: null };
 let toastTimer;
 let installPrompt;
 let localModelHealth = null;
+let localAgentNetwork = null;
+let localAgentGraph = null;
+let localAgentGraphError = null;
+let reasoningTaskCatalog = null;
+let localCharacterModel = new LocalCharacterModel();
+
+function restoreLocalCharacterModel() {
+  try {
+    const saved = localStorage.getItem(LOCAL_TEXT_MODEL_STORAGE_KEY);
+    if (saved) localCharacterModel = LocalCharacterModel.fromJSON(JSON.parse(saved));
+  } catch (error) {
+    console.error("Could not restore the browser-local text model", error);
+    $("#modelTrainingStatus").textContent =
+      `Saved browser model could not be restored: ${error.message}`;
+  }
+}
+
+function persistLocalCharacterModel() {
+  localStorage.setItem(LOCAL_TEXT_MODEL_STORAGE_KEY, JSON.stringify(localCharacterModel));
+}
 
 function loadWorkspace() {
   try {
@@ -124,6 +146,9 @@ async function localModelRequest(path, payload) {
 async function refreshLocalModel() {
   try {
     localModelHealth = await localModelRequest("health");
+    localAgentNetwork = localModelHealth.agent_network;
+    renderAgentNetwork(localAgentNetwork);
+    await refreshReasoningTasks();
     let syncError = null;
     try {
       for (const example of examples) {
@@ -133,6 +158,9 @@ async function refreshLocalModel() {
       syncError = error;
     }
     localModelHealth = await localModelRequest("health");
+    localAgentNetwork = localModelHealth.agent_network;
+    renderAgentNetwork(localAgentNetwork);
+    await refreshAgentGraph();
     const model = localModelHealth.model;
     $("#localModelBadge").textContent = model.trained ? "Model trained" : "Model needs training";
     $("#localModelStatus").textContent =
@@ -147,13 +175,140 @@ async function refreshLocalModel() {
     }
   } catch (error) {
     localModelHealth = null;
-    $("#localModelBadge").textContent = "Server not connected";
+    localAgentNetwork = null;
+    localAgentGraph = null;
+    localAgentGraphError = error.message;
+    reasoningTaskCatalog = null;
+    renderAgentNetwork(null);
+    $("#localModelBadge").textContent = localCharacterModel.trained
+      ? "Browser model trained"
+      : "Browser model ready";
     $("#localModelStatus").textContent =
-      `Local generation is only available while the downloaded desktop app is running. ` +
-      `The GitHub Pages app is a browser interface and cannot host model inference. (${error.message})`;
-    $("#trainFromExamples").disabled = true;
-    $("#trainFromCorpus").disabled = true;
+      `No local Python server detected. Training and generation run in this browser on this computer; ` +
+      `no separate server is needed. ` +
+      `${localCharacterModel.trainingCharacters.toLocaleString()} cumulative training characters. ` +
+      "This compact character model stays in this browser profile. The optional Python server adds " +
+      "the larger RNN and agent features.";
+    $("#trainFromExamples").disabled = examples.length === 0;
+    $("#trainFromCorpus").disabled = false;
   }
+}
+
+function renderAgentNetwork(state) {
+  const nodes = state?.nodes ?? [];
+  $("#agentNodeCount").textContent = `${nodes.length} node${nodes.length === 1 ? "" : "s"}`;
+  const list = $("#agentNodeList");
+  list.replaceChildren();
+  for (const node of nodes) {
+    const item = document.createElement("div");
+    item.className = "example-item";
+    const details = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = `${node.name} · ${node.hidden_size} hidden units`;
+    const role = document.createElement("p");
+    role.textContent = node.role;
+    details.append(title, role);
+    const training = document.createElement("p");
+    training.textContent =
+      `${node.trained_characters.toLocaleString()} trained characters · ` +
+      `${node.reinforcement_updates} reward updates`;
+    item.append(details, training);
+    list.append(item);
+  }
+  if (nodes.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "field-help";
+    empty.textContent = state
+      ? "No model nodes created yet."
+      : "Agent nodes are available while the local server is running.";
+    list.append(empty);
+  }
+  const connected = Boolean(state);
+  const trainedNodes = nodes.filter((node) => node.trained_characters > 0).length;
+  $("#createAgentNode").disabled = !connected || nodes.length >= 8;
+  $("#trainAgentNetwork").disabled = !connected || nodes.length === 0;
+  $("#uploadAgentCorpus").disabled = !connected || nodes.length === 0;
+  $("#runAgentNetwork").disabled = !connected || nodes.length < 2 || trainedNodes !== nodes.length;
+  $("#trainReasoningDataset").disabled =
+    !connected || !reasoningTaskCatalog || nodes.length === 0;
+  $("#runVerifiedEpisode").disabled =
+    !connected || !reasoningTaskCatalog || nodes.length < 2 || trainedNodes !== nodes.length;
+  if (!connected) {
+    $("#agentBuilderStatus").textContent = "Connect the local BRNA Studio server to create persistent agent models.";
+  } else {
+    $("#agentBuilderStatus").textContent =
+      `${nodes.length}/8 model nodes · ${state.shared_training_characters.toLocaleString()} shared training characters.`;
+  }
+  renderAgentGraph();
+}
+
+async function refreshAgentGraph() {
+  try {
+    localAgentGraph = await localModelRequest("agents/graph");
+    localAgentGraphError = null;
+  } catch (error) {
+    localAgentGraph = null;
+    localAgentGraphError = error.message;
+  }
+  renderAgentGraph();
+}
+
+function renderAgentGraph() {
+  const nodes = localAgentNetwork?.nodes ?? [];
+  const trained = nodes.length > 0 && nodes.every((node) => node.trained_characters > 0);
+  const active = Boolean(localAgentGraph?.episode_active);
+  const awaitingReward = Boolean(localAgentGraph?.awaiting_reward);
+  $("#agentGraphSummary").textContent = localAgentGraph
+    ? `${localAgentGraph.active_edges} edges · ${localAgentGraph.episodes_trained} RL episodes`
+    : "Graph unavailable";
+  $("#trainAgentGraph").disabled = !trained || active;
+  $("#startAgentGraphEpisode").disabled = !trained || active;
+  $("#stepAgentGraph").disabled = !trained || !active || awaitingReward;
+  $("#submitAgentGraphReward").disabled = !trained || !active || !awaitingReward;
+  if (localAgentGraphError) {
+    $("#agentGraphEpisodeStatus").textContent = `Graph status unavailable: ${localAgentGraphError}`;
+  } else if (!nodes.length) {
+    $("#agentGraphEpisodeStatus").textContent = "Create and train model nodes to use the latent graph.";
+  } else if (!trained) {
+    $("#agentGraphEpisodeStatus").textContent = "Train every model node before starting a graph episode.";
+  } else if (awaitingReward) {
+    $("#agentGraphEpisodeStatus").textContent = "Evaluate the selected action, then submit its reward.";
+  } else if (active) {
+    $("#agentGraphEpisodeStatus").textContent = "Episode active. Provide the next task-state prompt to select an action.";
+  } else {
+    $("#agentGraphEpisodeStatus").textContent = "Ready to start a graph-policy episode.";
+  }
+}
+
+async function refreshReasoningTasks() {
+  const picker = $("#reasoningTaskSelect");
+  try {
+    const result = await localModelRequest("agents/datasets");
+    reasoningTaskCatalog = result.tasks;
+    picker.replaceChildren();
+    for (const [name, task] of Object.entries(reasoningTaskCatalog)) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = task.label;
+      picker.append(option);
+    }
+    picker.disabled = false;
+    $("#reasoningDatasetStatus").textContent =
+      `${Object.keys(reasoningTaskCatalog).length} curated procedural datasets available from ` +
+      `${result.source}.`;
+  } catch (error) {
+    reasoningTaskCatalog = null;
+    picker.replaceChildren();
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Reasoning Gym unavailable";
+    picker.append(option);
+    picker.disabled = true;
+    $("#reasoningDatasetStatus").textContent = error.message.includes("pip install")
+      ? "Install the optional dependency with: pip install -e '.[reasoning]'."
+      : `Reasoning tasks unavailable: ${error.message}`;
+  }
+  renderAgentNetwork(localAgentNetwork);
 }
 
 async function trainLocalModel(source, text = undefined) {
@@ -163,23 +318,43 @@ async function trainLocalModel(source, text = undefined) {
   }
   const button = source === "examples" ? $("#trainFromExamples") : $("#trainFromCorpus");
   button.disabled = true;
-  $("#modelTrainingStatus").textContent = "Training the local character model…";
+  $("#modelTrainingStatus").textContent = localModelHealth
+    ? "Training the local character model…"
+    : "Training the browser-local character model on this computer…";
   try {
-    const result = await localModelRequest("train", {
-      source,
-      ...(text === undefined ? {} : { text }),
-      epochs,
-    });
-    const loss = result.losses.at(-1);
-    $("#modelTrainingStatus").textContent =
-      `Training complete · ${result.training_characters.toLocaleString()} cumulative characters · ` +
-      `final loss ${loss.toFixed(3)}. Generation is experimental; evaluate outputs carefully.`;
-    await refreshLocalModel();
+    if (localModelHealth) {
+      const result = await localModelRequest("train", {
+        source,
+        ...(text === undefined ? {} : { text }),
+        epochs,
+      });
+      const loss = result.losses.at(-1);
+      $("#modelTrainingStatus").textContent =
+        `Training complete · ${result.training_characters.toLocaleString()} cumulative characters · ` +
+        `final loss ${loss.toFixed(3)}. Generation is experimental; evaluate outputs carefully.`;
+      await refreshLocalModel();
+    } else {
+      const trainingText =
+        text ??
+        examples.map((example) => `User: ${example.prompt}\nAssistant: ${example.response}`).join("\n");
+      if (!trainingText) throw new Error("Teach at least one example or choose a training document first.");
+      const result = localCharacterModel.train(trainingText, epochs);
+      persistLocalCharacterModel();
+      $("#localModelBadge").textContent = "Browser model trained";
+      $("#localModelStatus").textContent =
+        `Browser-local model trained on this computer · ${result.trainingCharacters.toLocaleString()} ` +
+        "cumulative training characters. No separate server is needed.";
+      $("#modelTrainingStatus").textContent =
+        `Training complete · ${result.trainingCharacters.toLocaleString()} cumulative characters. ` +
+        "This compact character model is experimental; evaluate outputs carefully.";
+    }
   } finally {
     button.disabled =
-      !localModelHealth ||
+      (localModelHealth
+        ? false
+        : source === "examples" && examples.length === 0) ||
       (source === "examples" &&
-        localModelHealth.conversation_examples === 0 &&
+        localModelHealth?.conversation_examples === 0 &&
         examples.length === 0);
   }
 }
@@ -913,12 +1088,312 @@ $("#askMemory").addEventListener("click", async () => {
   if (match) {
     response.textContent = `${match.response}\n\nRetrieved from your examples · similarity ${(match.score * 100).toFixed(0)}%`;
     response.classList.add("has-answer");
+  } else if (localCharacterModel.trained) {
+    try {
+      const generated = localCharacterModel.generate(`User: ${prompt}\nAssistant:`);
+      if (!generated) throw new Error("The model generated an empty response; train it with more text.");
+      response.textContent = `${generated}\n\nGenerated by the browser-local character model`;
+      response.classList.add("has-answer");
+    } catch (error) {
+      response.textContent = `The browser-local model could not answer: ${error.message}`;
+      response.classList.remove("has-answer");
+    }
   } else {
-    response.textContent = "No sufficiently similar taught response was found. Teach a matching example first.";
+    response.textContent =
+      "No sufficiently similar taught response was found. Train the browser-local model or teach a matching example first.";
     response.classList.remove("has-answer");
   }
 });
 $("#refreshLocalModel").addEventListener("click", refreshLocalModel);
+
+$("#createAgentNode").addEventListener("click", async () => {
+  try {
+    const result = await localModelRequest("agents/create", {
+      name: $("#agentName").value,
+      role: $("#agentRole").value,
+      hidden_size: Number($("#agentHiddenSize").value),
+    });
+    $("#agentBuilderStatus").textContent = `Created ${result.name}; model parameters are independent.`;
+    await refreshLocalModel();
+  } catch (error) {
+    $("#agentBuilderStatus").textContent = `Could not create agent: ${error.message}`;
+  }
+});
+
+$("#trainReasoningDataset").addEventListener("click", async () => {
+  try {
+    const taskName = $("#reasoningTaskSelect").value;
+    const size = Number($("#reasoningExampleCount").value);
+    const seed = Number($("#reasoningSeed").value);
+    const epochs = Number($("#agentTrainingEpochs").value);
+    if (!taskName) throw new Error("Choose an available reasoning task.");
+    if (!Number.isInteger(size) || size < 1 || size > 128) {
+      throw new Error("Generated examples must be a whole number from 1 to 128.");
+    }
+    if (!Number.isInteger(seed) || seed < 0 || seed > 4294967295) {
+      throw new Error("Dataset seed must be a whole number from 0 to 4294967295.");
+    }
+    if (!Number.isInteger(epochs) || epochs < 1 || epochs > 50) {
+      throw new Error("Epochs must be a whole number from 1 to 50.");
+    }
+    $("#trainReasoningDataset").disabled = true;
+    $("#reasoningDatasetStatus").textContent = "Generating verified tasks and training every model node…";
+    const result = await localModelRequest("agents/datasets/train", {
+      task_name: taskName,
+      size,
+      seed,
+      epochs,
+    });
+    $("#reasoningDatasetStatus").textContent =
+      `Trained ${result.trained_nodes} nodes on ${result.examples_generated} generated ` +
+      `${result.dataset} examples · seed ${result.seed} · shared corpus ` +
+      `${result.training_characters.toLocaleString()} characters.`;
+    await refreshLocalModel();
+  } catch (error) {
+    $("#reasoningDatasetStatus").textContent = `Dataset training failed: ${error.message}`;
+  } finally {
+    renderAgentNetwork(localAgentNetwork);
+  }
+});
+
+$("#runVerifiedEpisode").addEventListener("click", async () => {
+  try {
+    const taskName = $("#reasoningTaskSelect").value;
+    const seed = Number($("#reasoningSeed").value);
+    const index = Number($("#reasoningEpisodeIndex").value);
+    if (!taskName) throw new Error("Choose an available reasoning task.");
+    if (!Number.isInteger(seed) || seed < 0 || seed > 4294967295) {
+      throw new Error("Dataset seed must be a whole number from 0 to 4294967295.");
+    }
+    if (!Number.isInteger(index) || index < 0 || index > 127) {
+      throw new Error("Task index must be a whole number from 0 to 127.");
+    }
+    $("#runVerifiedEpisode").disabled = true;
+    $("#verifiedEpisodeOutput").textContent = "Generating, solving, verifying, and applying reward…";
+    const result = await localModelRequest("agents/reasoning-episode", {
+      task_name: taskName,
+      seed,
+      index,
+      max_new_tokens: 48,
+    });
+    $("#verifiedEpisodeOutput").textContent =
+      `Task: ${result.question}\n` +
+      `Model response: ${result.model_response}\n` +
+      `Expected answer: ${result.expected_answer}\n` +
+      `Verifier score: ${result.verifier_score.toFixed(3)} · RL reward: ${result.reward.toFixed(3)}\n` +
+      `Learning update: ${result.learning.algorithm}; ${result.learning.updated_nodes} nodes, ` +
+      `${result.learning.trajectory_steps} sampled outputs.`;
+    await refreshLocalModel();
+  } catch (error) {
+    $("#verifiedEpisodeOutput").textContent = `Verified episode failed: ${error.message}`;
+  } finally {
+    renderAgentNetwork(localAgentNetwork);
+  }
+});
+
+$("#trainAgentNetwork").addEventListener("click", async () => {
+  try {
+    const text = $("#agentTrainingText").value;
+    if (!text.trim()) throw new Error("Enter a shared training corpus first.");
+    const epochs = Number($("#agentTrainingEpochs").value);
+    if (!Number.isInteger(epochs) || epochs < 1 || epochs > 50) {
+      throw new Error("Epochs must be a whole number from 1 to 50.");
+    }
+    $("#trainAgentNetwork").disabled = true;
+    const result = await localModelRequest("agents/train", { text, epochs });
+    $("#agentTrainingStatus").textContent =
+      `Training complete · ${result.trained_nodes} model nodes · ` +
+      `${result.training_characters.toLocaleString()} shared characters.`;
+    await refreshLocalModel();
+  } catch (error) {
+    $("#agentTrainingStatus").textContent = `Agent training failed: ${error.message}`;
+  } finally {
+    renderAgentNetwork(localAgentNetwork);
+  }
+});
+
+$("#uploadAgentCorpus").addEventListener("click", async () => {
+  try {
+    const [file] = $("#agentTrainingFile").files ?? [];
+    if (!file) throw new Error("Choose a training file first.");
+    if (file.size > 20_000_000) throw new Error("Training documents must not exceed 20 MB.");
+    const epochs = Number($("#agentTrainingEpochs").value);
+    if (!Number.isInteger(epochs) || epochs < 1 || epochs > 50) {
+      throw new Error("Epochs must be a whole number from 1 to 50.");
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    $("#agentTrainingStatus").textContent = `Extracting and training every model from ${file.name}…`;
+    $("#uploadAgentCorpus").disabled = true;
+    const result = await localModelRequest("agents/upload", {
+      filename: file.name,
+      content_base64: btoa(binary),
+      epochs,
+    });
+    $("#agentTrainingStatus").textContent =
+      `Trained ${result.trained_nodes} nodes from ${result.filename} · ` +
+      `${result.extracted_characters.toLocaleString()} extracted characters.`;
+    await refreshLocalModel();
+  } catch (error) {
+    $("#agentTrainingStatus").textContent = `Document training failed: ${error.message}`;
+  } finally {
+    renderAgentNetwork(localAgentNetwork);
+  }
+});
+
+$("#runAgentNetwork").addEventListener("click", async () => {
+  const prompt = $("#agentTaskPrompt").value.trim();
+  if (!prompt) {
+    $("#agentReinforcementStatus").textContent = "Enter a task prompt first.";
+    return;
+  }
+  $("#runAgentNetwork").disabled = true;
+  $("#agentReinforcementStatus").textContent = "Running private and shared model passes…";
+  try {
+    const result = await localModelRequest("agents/think", { prompt, max_new_tokens: 48 });
+    const output = $("#agentCollectiveOutput");
+    output.replaceChildren();
+    for (const message of result.messages) {
+      const item = document.createElement("div");
+      item.className = "example-item";
+      const details = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = `${message.name} · ${message.round} pass`;
+      const text = document.createElement("p");
+      text.textContent = message.text;
+      details.append(title, text);
+      item.append(details);
+      output.append(item);
+    }
+    $("#agentReinforcementStatus").textContent =
+      `Collective response: ${result.response} · rate this full episode from -1 to 1.`;
+    $("#reinforceAgentNetwork").disabled = false;
+  } catch (error) {
+    $("#agentReinforcementStatus").textContent = `Collective run failed: ${error.message}`;
+    $("#reinforceAgentNetwork").disabled = true;
+  } finally {
+    renderAgentNetwork(localAgentNetwork);
+  }
+});
+
+$("#reinforceAgentNetwork").addEventListener("click", async () => {
+  try {
+    const reward = Number($("#agentEpisodeReward").value);
+    if (!Number.isFinite(reward) || reward < -1 || reward > 1) {
+      throw new Error("Episode reward must be between -1 and 1.");
+    }
+    const result = await localModelRequest("agents/feedback", { reward, discount: 0.95 });
+    $("#agentReinforcementStatus").textContent =
+      `Updated ${result.updated_nodes} models over ${result.trajectory_steps} turns · ` +
+      `reward baseline ${result.baseline.toFixed(3)} · ${result.algorithm}.`;
+    $("#reinforceAgentNetwork").disabled = true;
+    await refreshLocalModel();
+  } catch (error) {
+    $("#agentReinforcementStatus").textContent = `Reinforcement update failed: ${error.message}`;
+  }
+});
+
+$("#trainAgentGraph").addEventListener("click", async () => {
+  try {
+    const examples = JSON.parse($("#agentGraphExamples").value);
+    if (!Array.isArray(examples) || examples.length === 0) {
+      throw new Error("Provide a non-empty JSON array of labeled examples.");
+    }
+    const epochs = Number($("#agentGraphEpochs").value);
+    if (!Number.isInteger(epochs) || epochs < 1 || epochs > 100) {
+      throw new Error("Graph training epochs must be a whole number from 1 to 100.");
+    }
+    $("#trainAgentGraph").disabled = true;
+    $("#agentGraphTrainingStatus").textContent = "Training graph transforms and directed edge gates…";
+    const result = await localModelRequest("agents/graph/train", { examples, epochs });
+    $("#agentGraphTrainingStatus").textContent =
+      `Trained ${result.examples_trained} examples for ${result.updates} updates · ` +
+      `mean gate ${result.mean_gate.toFixed(3)}.`;
+    await refreshAgentGraph();
+  } catch (error) {
+    $("#agentGraphTrainingStatus").textContent = `Graph training failed: ${error.message}`;
+  } finally {
+    renderAgentGraph();
+  }
+});
+
+$("#startAgentGraphEpisode").addEventListener("click", async () => {
+  try {
+    await localModelRequest("agents/graph/episode/start", {});
+    await refreshAgentGraph();
+    $("#agentGraphStepOutput").replaceChildren();
+    $("#agentGraphEpisodeStatus").textContent = "Episode started. Enter a task-state prompt and request an action.";
+  } catch (error) {
+    $("#agentGraphEpisodeStatus").textContent = `Could not start graph episode: ${error.message}`;
+  } finally {
+    renderAgentGraph();
+  }
+});
+
+$("#stepAgentGraph").addEventListener("click", async () => {
+  try {
+    const prompt = $("#agentGraphPrompt").value.trim();
+    if (!prompt) throw new Error("Enter a task-state prompt first.");
+    const max_new_tokens = Number($("#agentGraphTokens").value);
+    if (!Number.isInteger(max_new_tokens) || max_new_tokens < 1 || max_new_tokens > 128) {
+      throw new Error("Response tokens must be a whole number from 1 to 128.");
+    }
+    const result = await localModelRequest("agents/graph/step", { prompt, max_new_tokens });
+    const output = $("#agentGraphStepOutput");
+    output.replaceChildren();
+    for (const message of result.messages) {
+      const item = document.createElement("div");
+      item.className = "example-item";
+      const details = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = `${message.name} · ${message.role}`;
+      const text = document.createElement("p");
+      text.textContent = message.text;
+      details.append(title, text);
+      item.append(details);
+      output.append(item);
+    }
+    const action = document.createElement("p");
+    action.className = "field-help";
+    action.textContent =
+      `Selected action ${result.action.action} · probabilities: ` +
+      result.action.probabilities.map((value) => value.toFixed(3)).join(", ");
+    output.append(action);
+    await refreshAgentGraph();
+  } catch (error) {
+    $("#agentGraphEpisodeStatus").textContent = `Graph action failed: ${error.message}`;
+  } finally {
+    renderAgentGraph();
+  }
+});
+
+$("#submitAgentGraphReward").addEventListener("click", async () => {
+  try {
+    const reward = Number($("#agentGraphReward").value);
+    if (!Number.isFinite(reward) || reward < -1 || reward > 1) {
+      throw new Error("Observed reward must be between -1 and 1.");
+    }
+    const done = $("#agentGraphDone").value === "true";
+    const result = await localModelRequest("agents/graph/reward", { reward, done });
+    if (result.episode_complete) {
+      $("#agentGraphEpisodeStatus").textContent =
+        `Episode learned · ${result.updated_steps} actions · ` +
+        `baseline ${result.baseline.toFixed(3)} · ${result.algorithm}.`;
+      await refreshLocalModel();
+    } else {
+      $("#agentGraphEpisodeStatus").textContent = "Reward recorded. Continue the episode with the next task-state prompt.";
+      await refreshAgentGraph();
+    }
+  } catch (error) {
+    $("#agentGraphEpisodeStatus").textContent = `Reward update failed: ${error.message}`;
+  } finally {
+    renderAgentGraph();
+  }
+});
+
 $("#trainFromExamples").addEventListener("click", async () => {
   try {
     await trainLocalModel("examples");
@@ -929,10 +1404,39 @@ $("#trainFromExamples").addEventListener("click", async () => {
 $("#trainFromCorpus").addEventListener("click", async () => {
   try {
     const [file] = $("#modelCorpusFile").files ?? [];
-    if (!file) throw new Error("Choose a plain-text training corpus first.");
-    if (file.size > 50_000) throw new Error("Training text must not exceed 50,000 bytes.");
-    const text = await file.text();
-    await trainLocalModel("corpus", text);
+    if (!file) throw new Error("Choose a training document first.");
+    if (file.size > 20_000_000) throw new Error("Training documents must not exceed 20 MB.");
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (["txt", "md", "markdown"].includes(extension)) {
+      const text = await file.text();
+      await trainLocalModel("corpus", text);
+    } else if (["pdf", "docx"].includes(extension)) {
+      if (!localModelHealth) {
+        throw new Error("PDF and DOCX extraction requires the optional local Python server; use .txt or .md without it.");
+      }
+      const epochs = Number($("#modelTrainingEpochs").value);
+      if (!Number.isInteger(epochs) || epochs < 1 || epochs > 50) {
+        throw new Error("Training epochs must be a whole number from 1 to 50.");
+      }
+      $("#modelTrainingStatus").textContent = "Extracting and training from the uploaded document…";
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+      }
+      const result = await localModelRequest("upload", {
+        filename: file.name,
+        content_base64: btoa(binary),
+        epochs,
+      });
+      const loss = result.losses.at(-1);
+      $("#modelTrainingStatus").textContent =
+        `Uploaded ${result.filename} (${result.file_type}) · extracted ${result.extracted_characters.toLocaleString()} characters · ` +
+        `final loss ${loss.toFixed(3)}.`;
+      await refreshLocalModel();
+    } else {
+      throw new Error("Use a .txt, .md, .docx, or .pdf training document.");
+    }
   } catch (error) {
     $("#modelTrainingStatus").textContent = `Model training failed: ${error.message}`;
   }
@@ -1022,6 +1526,7 @@ $("#installButton").addEventListener("click", async () => {
   $("#installButton").hidden = true;
 });
 
+restoreLocalCharacterModel();
 loadWorkspace();
 render();
 setPage(pages.some((page) => page.dataset.pagePanel === location.hash.slice(1)) ? location.hash.slice(1) : "design");

@@ -1,10 +1,11 @@
-const CACHE = "brna-studio-v3";
+const CACHE = "brna-studio-v6";
 const FILES = [
   "./",
   "./index.html",
   "./app.css",
   "./app.js",
   "./core.js",
+  "./local-model.js",
   "./service-worker.js",
   "./manifest.webmanifest",
   "./icon.svg",

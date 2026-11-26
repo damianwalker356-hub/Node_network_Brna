@@ -4,3 +4,5 @@ RSK-02,Unequal parameter counts confound comparison,Use equal-parameter option a
 RSK-03,Few seeds and untuned training limit conclusions,Use at least 10 seeds for new comparisons and document tuning,Draft
 RSK-04,Source artifacts missing,Request authoritative source files and preserve discrepancy,Draft
 RSK-05,Proposed software classification unconfirmed,Verify NPR 7150.2D Appendix D,Draft
+RSK-06,Character-level RNN and small corpus do not establish useful general language capability,Bound product claims and establish a separately resourced corpus and benchmark before capability claims,Draft
+RSK-07,Repeated agent outputs may reinforce errors or reduce other response quality,Bound reward updates, preserve checkpoints, record feedback runs, and test against held-out tasks before broader use,Draft

@@ -1,0 +1,72 @@
+{
+  "run_id": "20261126T053500Z-reasoning-gym-verification",
+  "timestamp": "2026-11-26T05:35:00Z",
+  "git_commit": "a2ab4d84d48efbe02090f414016505caa1c2438e",
+  "git_dirty": true,
+  "settings": {
+    "python_command": "PYTHONPATH=src:. /home/codespace/.python/current/bin/python -m pytest -q -m 'not slow'",
+    "browser_command": "npm run test:web",
+    "lint_command": "ruff check src/brna/reasoning_data.py src/brna/agent_network.py src/brna/server.py src/brna/language_model.py src/brna/data_ingestion.py tests/test_reasoning_data.py tests/test_agent_network.py tests/test_studio_server.py tests/test_language_model.py tests/test_data_ingestion.py",
+    "javascript_syntax_command": "node --check web/app.js",
+    "git_diff_check_command": "git diff --check",
+    "python_version": "3.14.2",
+    "numpy_version": "2.5.5",
+    "pytest_version": "9.2.0",
+    "ruff_version": "0.17.6",
+    "node_version": "v24.22.2",
+    "reasoning_gym_distribution_version": "0.1.25",
+    "reasoning_gym_module_version": "0.1.19",
+    "available_cpu_cores": 2,
+    "available_memory_mib": 1059,
+    "nvidia_gpu_detected": false
+  },
+  "code_sha256": {
+    "src/brna/agent_network.py": "906e0133fc6047f5085c1025b7e0efc6578888762444c99997a2cde657aa51ee",
+    "src/brna/reasoning_data.py": "a4f3668aca6907a06faa68bef36f953a25d6fa5c2999ade54f39081675e54b6d",
+    "src/brna/server.py": "37ee10d3531b2d439600e8d46db996e6e99f02e414be61fcae6ccd8bd258214e",
+    "src/brna/language_model.py": "47d23de69b5ee9d150b797f98a433be2eb37a2fb8a4862194831c997929f4128",
+    "src/brna/data_ingestion.py": "9f63d64d58882f5c83d13bb6eba99d5d34836df65d777615807ab8bb59073a25",
+    "web/app.js": "96abb9eccc2a915bdbf1d2e9d3687928decd5d278073532e8cac5d921513aeb9",
+    "web/index.html": "20cf1c9440d7355f38c096dd7cf01be07f5f85672e736a2ac41785ebc9115507",
+    "web/service-worker.js": "0c7cc00377a88c603e4b7d9f2166f90406aa30031e37a3e1dc88264686f3cee5",
+    "tests/test_reasoning_data.py": "3ff76fb13fda29dfcff149dd47cb18798b9810dd485238d9a4decae922588ca4",
+    "tests/test_agent_network.py": "6c06f4f3686004b1ced8b89482f6852e65c2cb28334ecf563237a5b1c52227b2",
+    "tests/test_studio_server.py": "690e84e16021bc81b576cadbb384fc40d7f878c9969009a4b9d8f64cbee1f0cd",
+    "pyproject.toml": "d93093af7160af73d02f4fe414208516f566bc59e3c02b9926364f9d122ba1b6",
+    ".github/workflows/ci.yml": "d4cead6a60f46c11f06dda98ec546be46c41d432445ea090027c5a29c152f02e"
+  },
+  "results": {
+    "python": {
+      "passed": 43,
+      "failed": 0,
+      "deselected": 1,
+      "raw_output": "results/vv/20261126T053500Z-reasoning-gym-python.txt"
+    },
+    "browser": {
+      "passed": 9,
+      "failed": 0,
+      "raw_output": "results/vv/20261126T053500Z-reasoning-gym-web.txt"
+    },
+    "ruff": {
+      "result": "passed",
+      "raw_output": "results/vv/20261126T053500Z-reasoning-gym-checks.txt"
+    },
+    "javascript_syntax": {
+      "result": "passed",
+      "raw_output": "results/vv/20261126T053500Z-reasoning-gym-checks.txt"
+    },
+    "git_diff_check": {
+      "result": "passed",
+      "raw_output": "results/vv/20261126T053500Z-reasoning-gym-checks.txt"
+    }
+  },
+  "limitations": [
+    "The working tree was dirty during verification.",
+    "The active Python 3.14.2 environment does not match the project's declared Python 3.12 requirement or pinned NumPy 2.2.3 and pytest 8.3.5 versions; a pinned Python 3.12 run remains outstanding.",
+    "One explicitly slow Python test was deselected.",
+    "The installed reasoning-gym distribution reports version 0.1.25 while its module reports 0.1.19.",
+    "The optional generator exposes only basic_arithmetic and leg_counting; it does not include third-party tasks with separately noted licensing such as ACRE.",
+    "The agent models are bounded character-level RNNs with basic episodic REINFORCE; language quality, task-level RL performance, and parity with frontier language models were not measured.",
+    "The measured environment had limited available CPU and memory and no detected NVIDIA GPU."
+  ]
+}
