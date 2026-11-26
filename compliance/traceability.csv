@@ -40,3 +40,6 @@ R-AGENT-GRAPH-01,Wrap each trained role model as a bounded latent graph node,B-R
 R-AGENT-GRAPH-02,Train graph transforms and directed edge gates from task labels,B-RNA differential graph training,test_differentiable_graph_trainer_updates_edge_gates_and_persists
 R-AGENT-GRAPH-03,Update graph-selected actions from discounted episodic rewards,B-RNA closed-loop policy,test_closed_loop_policy_optimizer_applies_discounted_episode_rewards
 R-AGENT-GRAPH-04,Expose graph training and caller-driven episodes through the local API and persist graph checkpoints,B-RNA agent graph service,test_server_trains_and_runs_user_agents_through_persisted_latent_graph
+R-HF-01,Use an optional local-only pretrained causal-LM with per-agent LoRA adapters and graph-driven inference,Local pretrained model integration,test_local_backbone_training_and_chat_use_the_bounded_agent_graph
+R-HF-02,Pass graph messages as differentiable continuous soft-prefix embeddings,Local pretrained soft-prefix graph,test_soft_prefix_graph_backpropagates_through_gates_and_context
+R-HF-03,Optimize verifier-scored candidate groups with group-relative advantages and frozen-base KL,Local pretrained GRPO,test_local_backbone_runs_verifier_scored_group_relative_episode

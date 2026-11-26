@@ -282,7 +282,7 @@
             <label class="field-label" for="agentGraphPrompt">Step prompt</label>
             <textarea id="agentGraphPrompt" class="text-input text-area" rows="3" maxlength="4000" placeholder="Describe the current task state for the agent nodes."></textarea>
             <div class="training-controls">
-              <label class="field-label" for="agentGraphTokens">Response tokens <input id="agentGraphTokens" type="number" min="1" max="128" step="1" value="32"></label>
+              <label class="field-label" for="agentGraphTokens">Response tokens <input id="agentGraphTokens" type="number" min="1" max="512" step="1" value="32"></label>
               <button id="startAgentGraphEpisode" class="button button-quiet" type="button" disabled>Start episode</button>
               <button id="stepAgentGraph" class="button button-primary" type="button" disabled>Get action</button>
             </div>
@@ -304,6 +304,12 @@
               <button id="runVerifiedEpisode" class="button button-primary" type="button" disabled>Run and learn from verified reward</button>
             </div>
             <div id="verifiedEpisodeOutput" class="chat-response" aria-live="polite">A verified task episode requires at least two trained model nodes.</div>
+            <div class="training-controls">
+              <label class="field-label" for="grpoGroupSize">GRPO candidates per node <input id="grpoGroupSize" type="number" min="2" max="8" step="1" value="4"></label>
+              <label class="field-label" for="grpoKLBeta">Frozen-base KL weight <input id="grpoKLBeta" type="number" min="0" max="1" step="0.01" value="0.02"></label>
+              <button id="runGRPOEpisode" class="button button-secondary" type="button" disabled>Run verified GRPO update</button>
+            </div>
+            <p id="grpoEpisodeStatus" class="status-message" role="status">GRPO requires the optional local pretrained-backbone mode and Reasoning Gym.</p>
           </div>
         </section>
 

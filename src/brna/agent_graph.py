@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,11 +14,13 @@ import numpy as np
 
 from brna.agent_network import AgentNetwork, AgentNode
 from brna.proto import Adam, sigmoid
+from brna.reasoning_data import generate_examples
 
 MAX_GRAPH_NODES = 8
 MAX_LATENT_SIZE = 128
 MAX_EPISODE_STEPS = 256
 MAX_CONTEXT_CHARACTERS = 4_000
+MAX_NODE_RESPONSE_TOKENS = 512
 
 
 def _bounded_vector(values: np.ndarray, size: int, max_norm: float, name: str) -> np.ndarray:
@@ -49,6 +52,8 @@ class LatentAgentMessage:
     text: str
     latent: np.ndarray
     training_prompt: str
+    soft_prefix: Any | None = None
+    context_states: Any | None = None
 
 
 class BoundedLatentNode:
@@ -60,6 +65,9 @@ class BoundedLatentNode:
         *,
         latent_size: int = 8,
         max_norm: float = 1.0,
+        hidden_size: int | None = None,
+        context_encoder: Callable[[AgentNode, str], np.ndarray] | None = None,
+        response_generator: Callable[[AgentNode, str, int], str] | None = None,
     ) -> None:
         if not isinstance(agent, AgentNode):
             raise TypeError("agent must be an AgentNode")
@@ -79,13 +87,24 @@ class BoundedLatentNode:
         self.agent = agent
         self.latent_size = latent_size
         self.max_norm = float(max_norm)
+        self.context_encoder = context_encoder
+        self.response_generator = response_generator
+        projection_input_size = (
+            agent.model.hidden_size if hidden_size is None else hidden_size
+        )
+        if (
+            isinstance(projection_input_size, bool)
+            or not isinstance(projection_input_size, int)
+            or projection_input_size < 1
+        ):
+            raise ValueError("hidden_size must be a positive whole number")
         digest = hashlib.sha256(agent.agent_id.encode("utf-8")).digest()
         projection_seed = (agent.seed ^ int.from_bytes(digest[:4], "little")) % 2**32
         rng = np.random.default_rng(projection_seed)
         self.projection = rng.normal(
             0.0,
-            1.0 / np.sqrt(agent.model.hidden_size),
-            (agent.model.hidden_size, latent_size),
+            1.0 / np.sqrt(projection_input_size),
+            (projection_input_size, latent_size),
         )
 
     def encode_text(self, text: str) -> np.ndarray:
@@ -95,11 +114,20 @@ class BoundedLatentNode:
             raise ValueError(
                 f"text must not exceed {MAX_CONTEXT_CHARACTERS} characters"
             )
-        if self.agent.model.trained_characters == 0:
+        if (
+            self.context_encoder is None
+            and self.agent.model.trained_characters == 0
+        ):
             raise RuntimeError(f"agent {self.agent.name!r} has not been trained")
-        hidden = self.agent.model.encode_context(
-            f"Role: {self.agent.role}\n{text}"
+        context = f"Role: {self.agent.role}\n{text}"
+        hidden = (
+            self.agent.model.encode_context(context)
+            if self.context_encoder is None
+            else self.context_encoder(self.agent, context)
         )
+        hidden = np.asarray(hidden, dtype=float)
+        if hidden.shape != (self.projection.shape[0],) or not np.isfinite(hidden).all():
+            raise RuntimeError("agent encoder returned an invalid hidden state")
         return _clip_norm(np.tanh(hidden @ self.projection), self.max_norm)
 
     def respond(
@@ -118,9 +146,11 @@ class BoundedLatentNode:
         if (
             isinstance(max_new_tokens, bool)
             or not isinstance(max_new_tokens, int)
-            or not 1 <= max_new_tokens <= 128
+            or not 1 <= max_new_tokens <= MAX_NODE_RESPONSE_TOKENS
         ):
-            raise ValueError("max_new_tokens must be from 1 to 128")
+            raise ValueError(
+                f"max_new_tokens must be from 1 to {MAX_NODE_RESPONSE_TOKENS}"
+            )
         latent = _bounded_vector(
             incoming_latent, self.latent_size, self.max_norm, "incoming_latent"
         )
@@ -136,11 +166,15 @@ class BoundedLatentNode:
             f"Bounded peer latent: {latent_text}\n"
             "Response:"
         )
-        response = self.agent.model.generate(
-            context,
-            max_new_tokens=max_new_tokens,
-            temperature=0.8,
-            top_k=min(16, max(1, len(self.agent.model.vocabulary))),
+        response = (
+            self.agent.model.generate(
+                context,
+                max_new_tokens=max_new_tokens,
+                temperature=0.8,
+                top_k=min(16, max(1, len(self.agent.model.vocabulary))),
+            )
+            if self.response_generator is None
+            else self.response_generator(self.agent, context, max_new_tokens)
         )
         if not response:
             raise RuntimeError(f"agent {self.agent.name!r} generated an empty response")
@@ -773,6 +807,18 @@ class AgentGraphBridge:
         )
         self.trainer = DifferentiableGraphGateTrainer(self.graph)
         self.policy = ClosedLoopRLPolicyOptimizer(self.graph, seed=seed + 1)
+        self.soft_prefix_graph = (
+            agents.backbone.create_soft_prefix_graph(
+                node_count=len(self.nodes),
+                adjacency=self.graph.adjacency,
+                latent_size=latent_size,
+                hops=hops,
+                seed=seed + 2,
+            )
+            if agents.backbone is not None
+            else None
+        )
+        self._last_context_states = None
         self.last_policy_latents: np.ndarray | None = None
         if (
             isinstance(agent_learning_rate, bool)
@@ -786,6 +832,16 @@ class AgentGraphBridge:
         self._episode_messages: list[list[LatentAgentMessage]] = []
 
     def think(self, prompt: str, *, max_new_tokens: int = 32) -> dict[str, Any]:
+        for node in self.agents.nodes:
+            is_trained = (
+                node.model.trained_characters > 0
+                if self.agents.backbone is None
+                else node.backbone_trained_characters > 0
+            )
+            if not is_trained:
+                raise RuntimeError(f"agent {node.name!r} has not been trained")
+        if self.soft_prefix_graph is not None:
+            return self._think_with_soft_prefix(prompt, max_new_tokens)
         initial_latents = np.stack(
             [node.encode_text(prompt) for node in self.nodes]
         )[None, ...]
@@ -820,6 +876,194 @@ class AgentGraphBridge:
             "communication": "bounded latent graph pass followed by role-agent responses",
         }
 
+    def _think_with_soft_prefix(
+        self,
+        prompt: str,
+        max_new_tokens: int,
+    ) -> dict[str, Any]:
+        backbone = self.agents.backbone
+        contexts = [
+            f"Role: {node.agent.role}\nTask: {prompt}\nResponse:"
+            for node in self.nodes
+        ]
+        context_states = backbone.stack_contexts(
+            [
+                backbone.encode_context_tensor(
+                    context,
+                    adapter_id=node.agent.agent_id,
+                    role=node.agent.role,
+                )
+                for node, context in zip(self.nodes, contexts, strict=True)
+            ]
+        )
+        graph_output = self.soft_prefix_graph(context_states)
+        prefixes = graph_output["prefix_embeddings"]
+        response_latents = backbone.tensor_to_numpy(graph_output["latents"])
+        messages = []
+        for index, (node, context) in enumerate(
+            zip(self.nodes, contexts, strict=True)
+        ):
+            prefix = prefixes[index : index + 1]
+            response = backbone.generate(
+                context,
+                adapter_id=node.agent.agent_id,
+                role=node.agent.role,
+                max_new_tokens=max_new_tokens,
+                temperature=0.8,
+                soft_prefix=prefix,
+            )
+            if not response:
+                raise RuntimeError(f"agent {node.agent.name!r} generated an empty response")
+            messages.append(
+                LatentAgentMessage(
+                    node.agent.agent_id,
+                    node.agent.name,
+                    node.agent.role,
+                    response,
+                    response_latents[index],
+                    context,
+                    prefix,
+                    context_states,
+                )
+            )
+        self._last_context_states = context_states
+        self._last_messages = messages
+        self.last_policy_latents = response_latents[None, ...]
+        action_logits = self.graph.forward(self.last_policy_latents).action_logits[0]
+        return {
+            "response": messages[-1].text,
+            "messages": [
+                {
+                    "agent_id": message.agent_id,
+                    "name": message.name,
+                    "role": message.role,
+                    "text": message.text,
+                    "latent": message.latent.tolist(),
+                }
+                for message in messages
+            ],
+            "action_logits": action_logits.tolist(),
+            "communication": "differentiable graph soft-prefix embeddings",
+        }
+
+    def grpo_reasoning_episode(
+        self,
+        task_name: str,
+        *,
+        seed: int = 0,
+        index: int = 0,
+        group_size: int = 4,
+        max_new_tokens: int = 128,
+        kl_beta: float = 0.02,
+        learning_rate: float = 1e-5,
+    ) -> dict[str, Any]:
+        if self.soft_prefix_graph is None:
+            raise RuntimeError(
+                "GRPO requires the optional local pretrained causal-LM backend"
+            )
+        if (
+            isinstance(group_size, bool)
+            or not isinstance(group_size, int)
+            or not 2 <= group_size <= 8
+        ):
+            raise ValueError("group_size must be from 2 to 8")
+        if (
+            isinstance(max_new_tokens, bool)
+            or not isinstance(max_new_tokens, int)
+            or not 1 <= max_new_tokens <= MAX_NODE_RESPONSE_TOKENS
+        ):
+            raise ValueError(
+                f"max_new_tokens must be from 1 to {MAX_NODE_RESPONSE_TOKENS}"
+            )
+        examples, dataset = generate_examples(task_name, size=index + 1, seed=seed)
+        example = examples[index]
+        backbone = self.agents.backbone
+        prompts = [
+            f"Role: {node.agent.role}\nTask: {example['question']}\nResponse:"
+            for node in self.nodes
+        ]
+        context_states = backbone.stack_contexts(
+            [
+                backbone.encode_context_tensor(
+                    prompt,
+                    adapter_id=node.agent.agent_id,
+                    role=node.agent.role,
+                )
+                for node, prompt in zip(self.nodes, prompts, strict=True)
+            ]
+        )
+        reports = []
+        for index_node, (node, prompt) in enumerate(
+            zip(self.nodes, prompts, strict=True)
+        ):
+            sampled_graph = self.soft_prefix_graph(context_states)
+            sample_prefix = sampled_graph["prefix_embeddings"][
+                index_node : index_node + 1
+            ]
+            completions = [
+                backbone.generate(
+                    prompt,
+                    adapter_id=node.agent.agent_id,
+                    role=node.agent.role,
+                    max_new_tokens=max_new_tokens,
+                    temperature=0.8,
+                    soft_prefix=sample_prefix,
+                )
+                for _ in range(group_size)
+            ]
+            if any(not completion for completion in completions):
+                raise RuntimeError(
+                    f"agent {node.agent.name!r} produced an empty GRPO candidate"
+                )
+            rewards = []
+            for completion in completions:
+                score = dataset.score_answer(answer=completion, entry=example)
+                if (
+                    isinstance(score, bool)
+                    or not isinstance(score, (int, float))
+                    or not math.isfinite(score)
+                ):
+                    raise RuntimeError("Reasoning Gym returned an invalid answer score")
+                rewards.append(float(np.clip(score, 0.0, 1.0)))
+            train_graph = self.soft_prefix_graph(context_states)
+            train_prefix = train_graph["prefix_embeddings"][
+                index_node : index_node + 1
+            ]
+            report = backbone.grpo_group_update(
+                node.agent.agent_id,
+                node.agent.role,
+                prompt,
+                completions,
+                rewards,
+                soft_prefix=train_prefix,
+                graph_parameters=list(self.soft_prefix_graph.parameters()),
+                learning_rate=learning_rate,
+                kl_beta=kl_beta,
+            )
+            node.agent.backbone_reinforcement_updates += 1
+            self.agents._save_node(node.agent)
+            reports.append(
+                {
+                    "agent_id": node.agent.agent_id,
+                    "name": node.agent.name,
+                    **report,
+                }
+            )
+        self._last_context_states = context_states
+        return {
+            "task_name": task_name,
+            "seed": seed,
+            "index": index,
+            "group_size": group_size,
+            "verified_candidates": len(self.nodes) * group_size,
+            "mean_reward": float(
+                np.mean([item["mean_reward"] for item in reports])
+            ),
+            "mean_kl": float(np.mean([item["mean_kl"] for item in reports])),
+            "agents": reports,
+            "algorithm": "group-relative policy optimization with frozen-base KL",
+        }
+
     def begin_episode(self) -> None:
         self.last_policy_latents = None
         self._last_messages = []
@@ -842,17 +1086,30 @@ class AgentGraphBridge:
         for messages, advantage in zip(
             self._episode_messages, result["advantages"], strict=True
         ):
-            for message in messages:
+            for index, message in enumerate(messages):
                 agent = next(
                     node
                     for node in self.agents.nodes
                     if node.agent_id == message.agent_id
                 )
-                agent.model.reinforce(
+                self.agents.reinforce_node(
+                    agent,
                     message.training_prompt,
                     message.text,
                     advantage,
                     learning_rate=self.agent_learning_rate,
+                    soft_prefix=(
+                        self.soft_prefix_graph(message.context_states)[
+                            "prefix_embeddings"
+                        ][index : index + 1]
+                        if self.soft_prefix_graph is not None
+                        else None
+                    ),
+                    graph_parameters=(
+                        list(self.soft_prefix_graph.parameters())
+                        if self.soft_prefix_graph is not None
+                        else ()
+                    ),
                 )
         self.agents.save_models()
         self._episode_messages = []
@@ -862,6 +1119,17 @@ class AgentGraphBridge:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         self.graph.save(target)
+        if self.soft_prefix_graph is not None:
+            prefix_path = target.with_suffix(target.suffix + ".prefix.npz")
+            state = self.soft_prefix_graph.state_dict()
+            with prefix_path.open("wb") as stream:
+                np.savez_compressed(
+                    stream,
+                    **{
+                        name: value.detach().cpu().numpy()
+                        for name, value in state.items()
+                    },
+                )
         metadata = {
             "version": 1,
             "agent_ids": [node.agent.agent_id for node in self.nodes],
@@ -871,6 +1139,7 @@ class AgentGraphBridge:
             "max_episode_steps": self.policy.max_episode_steps,
             "baseline": self.policy.baseline,
             "episode_count": self.policy.episode_count,
+            "soft_prefix_enabled": self.soft_prefix_graph is not None,
         }
         target.with_suffix(target.suffix + ".json").write_text(
             json.dumps(metadata, allow_nan=False, indent=2) + "\n",
@@ -902,6 +1171,13 @@ class AgentGraphBridge:
             or metadata.get("agent_ids") != expected_agent_ids
         ):
             raise ValueError("agent graph checkpoint does not match the current agent nodes")
+        prefix_enabled = metadata.get("soft_prefix_enabled", False)
+        if not isinstance(prefix_enabled, bool):
+            raise TypeError("agent graph checkpoint soft-prefix metadata must be boolean")
+        if prefix_enabled and self.soft_prefix_graph is None:
+            raise ValueError(
+                "agent graph checkpoint requires the optional pretrained backend"
+            )
         graph = DifferentiableGatedGraph.load(target)
         if (
             graph.node_count != len(self.nodes)
@@ -928,6 +1204,26 @@ class AgentGraphBridge:
             raise ValueError("agent graph policy metadata is invalid")
         policy.baseline = float(baseline)
         policy.episode_count = episode_count
+        prefix_path = target.with_suffix(target.suffix + ".prefix.npz")
+        if prefix_enabled and not prefix_path.is_file():
+            raise ValueError("agent graph checkpoint is missing its soft-prefix parameters")
+        if self.soft_prefix_graph is not None and prefix_enabled:
+            try:
+                with np.load(prefix_path, allow_pickle=False) as data:
+                    state = self.soft_prefix_graph.state_dict()
+                    if set(data.files) != set(state):
+                        raise ValueError("soft-prefix graph checkpoint has invalid fields")
+                    tensors = {
+                        name: self.agents.backbone._torch.as_tensor(
+                            data[name],
+                            device=parameter.device,
+                            dtype=parameter.dtype,
+                        )
+                        for name, parameter in state.items()
+                    }
+                    self.soft_prefix_graph.load_state_dict(tensors, strict=True)
+            except (OSError, KeyError) as exc:
+                raise ValueError(f"could not read soft-prefix graph checkpoint: {exc}") from exc
         self.graph = graph
         self.trainer = DifferentiableGraphGateTrainer(graph)
         self.policy = policy

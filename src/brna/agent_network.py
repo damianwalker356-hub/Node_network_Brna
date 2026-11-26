@@ -26,7 +26,7 @@ MAX_AGENT_NODES = 8
 MAX_AGENT_NAME_CHARACTERS = 48
 MAX_AGENT_ROLE_CHARACTERS = 240
 MAX_COLLECTIVE_PROMPT_CHARACTERS = 4_000
-MAX_AGENT_RESPONSE_TOKENS = 128
+MAX_AGENT_RESPONSE_TOKENS = 512
 
 
 @dataclass
@@ -36,6 +36,8 @@ class AgentNode:
     role: str
     seed: int
     model: CharacterLanguageModel
+    backbone_trained_characters: int = 0
+    backbone_reinforcement_updates: int = 0
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -44,8 +46,14 @@ class AgentNode:
             "role": self.role,
             "seed": self.seed,
             "hidden_size": self.model.hidden_size,
-            "trained_characters": self.model.trained_characters,
-            "reinforcement_updates": self.model.reinforcement_updates,
+            "trained_characters": max(
+                self.model.trained_characters, self.backbone_trained_characters
+            ),
+            "reinforcement_updates": (
+                self.backbone_reinforcement_updates
+                if self.backbone_trained_characters
+                else self.model.reinforcement_updates
+            ),
         }
 
 
@@ -57,7 +65,13 @@ class AgentNetwork:
     message. The final node's shared-pass answer is the team's final response.
     """
 
-    def __init__(self, directory: str | Path, *, seed: int = 17) -> None:
+    def __init__(
+        self,
+        directory: str | Path,
+        *,
+        seed: int = 17,
+        backbone: Any | None = None,
+    ) -> None:
         self.directory = Path(directory).expanduser().resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
         self.run_records_directory = self.directory / "run_records"
@@ -68,6 +82,7 @@ class AgentNetwork:
         self.nodes: list[AgentNode] = []
         self._last_episode: list[dict[str, str]] | None = None
         self._seed = seed
+        self.backbone = backbone
         if self.metadata_path.exists():
             self._load()
 
@@ -94,6 +109,16 @@ class AgentNetwork:
         if self.shared_corpus:
             model.train(self.shared_corpus, epochs=1, sequence_length=96)
         node = AgentNode(agent_id, name, role, node_seed, model)
+        if self.backbone is not None:
+            self.backbone.ensure_adapter(agent_id, role)
+            if self.shared_corpus:
+                node.backbone_trained_characters += len(self.shared_corpus)
+                self.backbone.train_text(
+                    agent_id,
+                    role,
+                    self.shared_corpus,
+                    epochs=1,
+                )
         self.nodes.append(node)
         self._save_node(node)
         self._save_metadata()
@@ -118,8 +143,30 @@ class AgentNetwork:
         """Wrap each trained text agent for bounded latent graph communication."""
         from brna.agent_graph import BoundedLatentNode
 
+        if self.backbone is None:
+            return [
+                BoundedLatentNode(node, latent_size=latent_size, max_norm=max_norm)
+                for node in self.nodes
+            ]
         return [
-            BoundedLatentNode(node, latent_size=latent_size, max_norm=max_norm)
+            BoundedLatentNode(
+                node,
+                latent_size=latent_size,
+                max_norm=max_norm,
+                hidden_size=self.backbone.hidden_size,
+                context_encoder=lambda agent, text: self.backbone.encode_context(
+                    text,
+                    adapter_id=agent.agent_id,
+                    role=agent.role,
+                ),
+                response_generator=lambda agent, prompt, max_new_tokens: self.backbone.generate(
+                    prompt,
+                    adapter_id=agent.agent_id,
+                    role=agent.role,
+                    max_new_tokens=max_new_tokens,
+                    temperature=0.8,
+                ),
+            )
             for node in self.nodes
         ]
 
@@ -132,7 +179,7 @@ class AgentNetwork:
         text: str,
         *,
         epochs: int = 3,
-        learning_rate: float = 0.05,
+        learning_rate: float | None = None,
         sequence_length: int = 96,
         source_type: str = "provided-text",
         source_details: dict[str, Any] | None = None,
@@ -149,6 +196,8 @@ class AgentNetwork:
             )
         if isinstance(epochs, bool) or not isinstance(epochs, int) or not 1 <= epochs <= 50:
             raise ValueError("epochs must be a whole number from 1 to 50")
+        if learning_rate is None:
+            learning_rate = 2e-4 if self.backbone is not None else 0.05
         if (
             isinstance(learning_rate, bool)
             or not isinstance(learning_rate, (int, float))
@@ -178,7 +227,7 @@ class AgentNetwork:
             raise ValueError("unsupported training source type")
         if source_details is not None and not isinstance(source_details, dict):
             raise TypeError("source_details must be a mapping")
-        if any(
+        if self.backbone is None and any(
             len(set(node.model.vocabulary).union(text)) > MAX_VOCABULARY_SIZE
             for node in self.nodes
         ):
@@ -192,12 +241,22 @@ class AgentNetwork:
             )
         losses: dict[str, list[float]] = {}
         for node in self.nodes:
-            losses[node.agent_id] = node.model.train(
-                text,
-                epochs=epochs,
-                learning_rate=learning_rate,
-                sequence_length=sequence_length,
-            )
+            if self.backbone is None:
+                losses[node.agent_id] = node.model.train(
+                    text,
+                    epochs=epochs,
+                    learning_rate=learning_rate,
+                    sequence_length=sequence_length,
+                )
+            else:
+                losses[node.agent_id] = self.backbone.train_text(
+                    node.agent_id,
+                    node.role,
+                    text,
+                    epochs=epochs,
+                    learning_rate=learning_rate,
+                )
+                node.backbone_trained_characters += len(text) * epochs
             self._save_node(node)
         self.shared_corpus = candidate_corpus
         self._save_metadata()
@@ -301,7 +360,7 @@ class AgentNetwork:
         response: str,
         *,
         epochs: int = 1,
-        learning_rate: float = 0.05,
+        learning_rate: float | None = None,
     ) -> dict[str, Any]:
         prompt = _validated_text(prompt, "prompt", MAX_COLLECTIVE_PROMPT_CHARACTERS)
         response = _validated_text(response, "response", MAX_COLLECTIVE_PROMPT_CHARACTERS)
@@ -355,7 +414,9 @@ class AgentNetwork:
         shared_messages: list[dict[str, str]] = []
         episode: list[dict[str, str]] = []
         for node in self.nodes:
-            if node.model.trained_characters == 0:
+            if self.backbone is None and node.model.trained_characters == 0:
+                raise RuntimeError(f"agent {node.name!r} has not been trained")
+            if self.backbone is not None and node.backbone_trained_characters == 0:
                 raise RuntimeError(f"agent {node.name!r} has not been trained")
             context = f"Role: {node.role}\nTask: {prompt}\nResponse:"
             output = self._generate(node, context, max_new_tokens)
@@ -456,7 +517,8 @@ class AgentNetwork:
         for item, advantage in zip(self._last_episode, advantages, strict=True):
             node = self._node_by_id(item["agent_id"])
             log_probabilities.append(
-                node.model.reinforce(
+                self.reinforce_node(
+                    node,
                     item["prompt"],
                     item["completion"],
                     advantage,
@@ -502,13 +564,54 @@ class AgentNetwork:
         )
         return result
 
-    def _generate(self, node: AgentNode, prompt: str, max_new_tokens: int) -> str:
-        output = node.model.generate(
+    def reinforce_node(
+        self,
+        node: AgentNode,
+        prompt: str,
+        completion: str,
+        advantage: float,
+        *,
+        learning_rate: float,
+        soft_prefix=None,
+        graph_parameters=(),
+    ) -> float:
+        if self.backbone is None:
+            return node.model.reinforce(
+                prompt,
+                completion,
+                advantage,
+                learning_rate=learning_rate,
+            )
+        loss = self.backbone.reinforce(
+            node.agent_id,
+            node.role,
             prompt,
-            max_new_tokens=max_new_tokens,
-            temperature=0.8,
-            top_k=min(16, max(1, len(node.model.vocabulary))),
+            completion,
+            advantage,
+            learning_rate=min(learning_rate, 1e-3),
+            soft_prefix=soft_prefix,
+            graph_parameters=graph_parameters,
         )
+        node.backbone_reinforcement_updates += 1
+        self._save_metadata()
+        return loss
+
+    def _generate(self, node: AgentNode, prompt: str, max_new_tokens: int) -> str:
+        if self.backbone is None:
+            output = node.model.generate(
+                prompt,
+                max_new_tokens=max_new_tokens,
+                temperature=0.8,
+                top_k=min(16, max(1, len(node.model.vocabulary))),
+            )
+        else:
+            output = self.backbone.generate(
+                prompt,
+                adapter_id=node.agent_id,
+                role=node.role,
+                max_new_tokens=max_new_tokens,
+                temperature=0.8,
+            )
         if not output:
             raise RuntimeError(f"agent {node.name!r} generated an empty response")
         return output
@@ -529,7 +632,14 @@ class AgentNetwork:
             "reward_baseline": self.reward_baseline,
             "feedback_count": self.feedback_count,
             "nodes": [
-                {"id": node.agent_id, "name": node.name, "role": node.role, "seed": node.seed}
+                {
+                    "id": node.agent_id,
+                    "name": node.name,
+                    "role": node.role,
+                    "seed": node.seed,
+                    "backbone_trained_characters": node.backbone_trained_characters,
+                    "backbone_reinforcement_updates": node.backbone_reinforcement_updates,
+                }
                 for node in self.nodes
             ],
         }
@@ -566,7 +676,15 @@ class AgentNetwork:
                 if (
                     not isinstance(item, dict)
                     or not {"id", "name", "role"} <= set(item)
-                    or set(item) - {"id", "name", "role", "seed"}
+                    or set(item)
+                    - {
+                        "id",
+                        "name",
+                        "role",
+                        "seed",
+                        "backbone_trained_characters",
+                        "backbone_reinforcement_updates",
+                    }
                 ):
                     raise ValueError("agent-node metadata has invalid fields")
                 agent_id = item["id"]
@@ -581,7 +699,29 @@ class AgentNetwork:
                 node_seed = item.get("seed", self._seed + len(nodes))
                 if isinstance(node_seed, bool) or not isinstance(node_seed, int):
                     raise TypeError("agent-node seed must be an integer")
-                nodes.append(AgentNode(agent_id, name, role, node_seed, model))
+                backbone_characters = item.get("backbone_trained_characters", 0)
+                backbone_updates = item.get("backbone_reinforcement_updates", 0)
+                if (
+                    isinstance(backbone_characters, bool)
+                    or not isinstance(backbone_characters, int)
+                    or backbone_characters < 0
+                    or isinstance(backbone_updates, bool)
+                    or not isinstance(backbone_updates, int)
+                    or backbone_updates < 0
+                ):
+                    raise ValueError("agent-node backbone training metadata is invalid")
+                node = AgentNode(
+                    agent_id,
+                    name,
+                    role,
+                    node_seed,
+                    model,
+                    backbone_characters,
+                    backbone_updates,
+                )
+                if self.backbone is not None:
+                    self.backbone.ensure_adapter(agent_id, role)
+                nodes.append(node)
             self.shared_corpus = corpus
             self.reward_baseline = float(baseline)
             self.feedback_count = count
@@ -605,6 +745,7 @@ class AgentNetwork:
             "language_model.py": Path(__file__).with_name("language_model.py"),
             "server.py": Path(__file__).with_name("server.py"),
             "reasoning_data.py": Path(__file__).with_name("reasoning_data.py"),
+            "hf_adapter.py": Path(__file__).with_name("hf_adapter.py"),
         }
         record = {
             "run_id": run_id,

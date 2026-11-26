@@ -22,3 +22,6 @@ Every test declares its requirement ID using both `@pytest.mark.req('ID')` and i
 - **R-AGENT-GRAPH-02 shall** train a directed, differentiable graph's node transforms and edge gates from supervised action labels, with numerically checked gate gradients and checkpoint persistence.
 - **R-AGENT-GRAPH-03 shall** sample graph policy actions and update the policy from bounded rewards using discounted episodic REINFORCE.
 - **R-AGENT-GRAPH-04 shall** expose supervised graph training and caller-driven episode start, action selection, and reward feedback through the loopback API, persisting graph checkpoints for the current agent set.
+- **R-HF-01 shall** optionally load a user-provided local causal-LM checkpoint without network access, attach a separately persisted LoRA adapter per agent, and route agent graph messages and reward updates through that backend while retaining the existing fallback.
+- **R-HF-02 shall** pass bounded directed graph messages to local causal-LM nodes as continuous soft-prefix embeddings, preserving automatic differentiation through graph transforms and edge gates.
+- **R-HF-03 shall** support grouped candidate optimization using deterministic task verifiers, group-relative advantages, and a KL penalty against the frozen base model.

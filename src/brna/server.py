@@ -22,6 +22,7 @@ from brna.agent_graph import AgentGraphBridge
 from brna.agent_network import AgentNetwork
 from brna.conversation import ConversationMemory
 from brna.data_ingestion import extract_training_text
+from brna.hf_adapter import LocalLoRABackbone
 from brna.language_model import CharacterLanguageModel
 from brna.reasoning_data import available_tasks
 
@@ -34,7 +35,14 @@ MAX_RESPONSE_TOKENS = 512
 class StudioService:
     """Owns the local conversation memory and trainable language model."""
 
-    def __init__(self, data_directory: Path, web_directory: Path | None = None) -> None:
+    def __init__(
+        self,
+        data_directory: Path,
+        web_directory: Path | None = None,
+        *,
+        backbone_directory: Path | None = None,
+        backbone_device: str = "auto",
+    ) -> None:
         self.data_directory = data_directory.expanduser().resolve()
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.web_directory = (web_directory or _web_directory()).resolve()
@@ -44,7 +52,24 @@ class StudioService:
         self.model_path = self.data_directory / "language-model.npz"
         self.lock = threading.RLock()
         self.memory = self._load_memory()
-        self.agent_network = AgentNetwork(self.data_directory / "agent-network")
+        selected_backbone = backbone_directory or (
+            Path(os.environ["BRNA_BACKBONE_DIR"])
+            if os.environ.get("BRNA_BACKBONE_DIR")
+            else None
+        )
+        self.backbone = (
+            LocalLoRABackbone(
+                selected_backbone,
+                self.data_directory / "agent-network" / "adapters",
+                device=backbone_device,
+            )
+            if selected_backbone is not None
+            else None
+        )
+        self.agent_network = AgentNetwork(
+            self.data_directory / "agent-network",
+            backbone=self.backbone,
+        )
         self._agent_graph_bridge: AgentGraphBridge | None = None
         self._agent_graph_node_ids: tuple[str, ...] = ()
         self._agent_graph_checkpoint: Path | None = None
@@ -60,10 +85,41 @@ class StudioService:
                 "service": "brna-studio",
                 "ready": True,
                 "model": {
-                    "trained": self.model.trained_characters > 0,
-                    "training_characters": self.model.trained_characters,
-                    "hidden_size": self.model.hidden_size,
-                    "vocabulary": "Unicode characters",
+                    "trained": (
+                        self.backbone.has_trained_adapter("studio-chat")
+                        if self.backbone is not None
+                        else self.model.trained_characters > 0
+                    ),
+                    "training_characters": (
+                        self.model.trained_characters
+                        if self.backbone is None
+                        else 0
+                    ),
+                    "hidden_size": (
+                        self.backbone.hidden_size
+                        if self.backbone is not None
+                        else self.model.hidden_size
+                    ),
+                    "vocabulary": (
+                        "pretrained tokenizer"
+                        if self.backbone is not None
+                        else "Unicode characters"
+                    ),
+                    "backend": (
+                        "local-pretrained-causal-lm"
+                        if self.backbone is not None
+                        else "scratch-character-rnn"
+                    ),
+                    "backbone_hidden_size": (
+                        self.backbone.hidden_size
+                        if self.backbone is not None
+                        else None
+                    ),
+                    "device": (
+                        self.backbone.device
+                        if self.backbone is not None
+                        else "cpu"
+                    ),
                 },
                 "conversation_examples": len(self.memory.examples),
                 "agent_network": {
@@ -122,7 +178,9 @@ class StudioService:
             return self.agent_network.train_all(
                 text,
                 epochs=payload.get("epochs", 3),
-                learning_rate=payload.get("learning_rate", 0.05),
+                learning_rate=payload.get(
+                    "learning_rate", 2e-4 if self.backbone is not None else 0.05
+                ),
                 sequence_length=payload.get("sequence_length", 96),
                 source_type=payload.get("source_type", "provided-text"),
             )
@@ -158,7 +216,9 @@ class StudioService:
             result = self.agent_network.train_all(
                 text,
                 epochs=payload.get("epochs", 3),
-                learning_rate=payload.get("learning_rate", 0.05),
+                learning_rate=payload.get(
+                    "learning_rate", 2e-4 if self.backbone is not None else 0.05
+                ),
                 sequence_length=payload.get("sequence_length", 96),
                 source_type=f"upload:{kind}",
             )
@@ -197,6 +257,7 @@ class StudioService:
                 "hops": bridge.graph.hops,
                 "graph_parameters": bridge.graph.parameter_count,
                 "active_edges": int(bridge.graph.adjacency.sum()),
+                "soft_prefix_enabled": bridge.soft_prefix_graph is not None,
                 "episode_active": bridge.policy.episode_active,
                 "awaiting_reward": bridge.policy.awaiting_reward,
                 "episodes_trained": bridge.policy.episode_count,
@@ -234,6 +295,25 @@ class StudioService:
                 raise RuntimeError("agent graph checkpoint path is unavailable")
             bridge.save_checkpoint(self._agent_graph_checkpoint)
             return {"episode_complete": True, **result}
+
+    def run_agent_grpo_episode(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self.lock:
+            bridge = self._get_agent_graph_bridge()
+            if bridge.policy.episode_active:
+                raise RuntimeError("finish the active graph-policy episode before starting GRPO")
+            result = bridge.grpo_reasoning_episode(
+                payload.get("task_name"),
+                seed=payload.get("seed", 0),
+                index=payload.get("index", 0),
+                group_size=payload.get("group_size", 4),
+                max_new_tokens=payload.get("max_new_tokens", 128),
+                kl_beta=payload.get("kl_beta", 0.02),
+                learning_rate=payload.get("learning_rate", 1e-5),
+            )
+            if self._agent_graph_checkpoint is None:
+                raise RuntimeError("agent graph checkpoint path is unavailable")
+            bridge.save_checkpoint(self._agent_graph_checkpoint)
+            return result
 
     def train_agent_graph(self, payload: dict[str, Any]) -> dict[str, Any]:
         examples = payload.get("examples")
@@ -309,7 +389,9 @@ class StudioService:
 
     def train(self, payload: dict[str, Any]) -> dict[str, Any]:
         epochs = payload.get("epochs", 3)
-        learning_rate = payload.get("learning_rate", 0.05)
+        learning_rate = payload.get(
+            "learning_rate", 2e-4 if self.backbone is not None else 0.05
+        )
         sequence_length = payload.get("sequence_length", 96)
         if "text" in payload:
             text = payload["text"]
@@ -324,16 +406,29 @@ class StudioService:
         if not isinstance(text, str):
             raise TypeError("training text must be a string")
         with self.lock:
-            losses = self.model.train(
-                text,
-                epochs=epochs,
-                learning_rate=learning_rate,
-                sequence_length=sequence_length,
-            )
-            self.model.save(self.model_path)
+            if self.backbone is None:
+                losses = self.model.train(
+                    text,
+                    epochs=epochs,
+                    learning_rate=learning_rate,
+                    sequence_length=sequence_length,
+                )
+                self.model.save(self.model_path)
+            else:
+                losses = self.backbone.train_text(
+                    "studio-chat",
+                    "General assistant",
+                    text,
+                    epochs=epochs,
+                    learning_rate=learning_rate,
+                )
             return {
                 "trained": True,
-                "training_characters": self.model.trained_characters,
+                "training_characters": (
+                    self.model.trained_characters
+                    if self.backbone is None
+                    else len(text) * len(losses)
+                ),
                 "epochs": len(losses),
                 "losses": losses,
             }
@@ -348,6 +443,26 @@ class StudioService:
             if match:
                 response, similarity = match
                 return {"response": response, "source": "taught-example", "similarity": similarity}
+            if self.backbone is not None:
+                if self.agent_network.nodes:
+                    bridge = self._get_agent_graph_bridge()
+                    result = bridge.think(prompt, max_new_tokens=max_new_tokens)
+                    return {
+                        "response": result["response"],
+                        "source": "local-pretrained-agent-graph",
+                        "messages": result["messages"],
+                        "action_logits": result["action_logits"],
+                        "communication": result["communication"],
+                    }
+                response = self.backbone.generate(
+                    f"User: {prompt}\nAssistant:",
+                    adapter_id="studio-chat",
+                    role="General assistant",
+                    max_new_tokens=max_new_tokens,
+                )
+                if not response:
+                    raise RuntimeError("The local pretrained model generated an empty response.")
+                return {"response": response, "source": "local-pretrained-model"}
             response = self.model.generate(
                 f"User: {prompt}\nAssistant:",
                 max_new_tokens=max_new_tokens,
@@ -361,21 +476,36 @@ class StudioService:
         encoded_content = payload.get("content_base64")
         text, kind = extract_training_text(filename, encoded_content)
         epochs = payload.get("epochs", 3)
-        learning_rate = payload.get("learning_rate", 0.05)
+        learning_rate = payload.get(
+            "learning_rate", 2e-4 if self.backbone is not None else 0.05
+        )
         sequence_length = payload.get("sequence_length", 96)
         with self.lock:
-            losses = self.model.train(
-                text,
-                epochs=epochs,
-                learning_rate=learning_rate,
-                sequence_length=sequence_length,
-            )
-            self.model.save(self.model_path)
+            if self.backbone is None:
+                losses = self.model.train(
+                    text,
+                    epochs=epochs,
+                    learning_rate=learning_rate,
+                    sequence_length=sequence_length,
+                )
+                self.model.save(self.model_path)
+            else:
+                losses = self.backbone.train_text(
+                    "studio-chat",
+                    "General assistant",
+                    text,
+                    epochs=epochs,
+                    learning_rate=learning_rate,
+                )
             return {
                 "trained": True,
                 "filename": filename,
                 "file_type": kind,
-                "training_characters": self.model.trained_characters,
+                "training_characters": (
+                    self.model.trained_characters
+                    if self.backbone is None
+                    else len(text) * len(losses)
+                ),
                 "extracted_characters": len(text),
                 "epochs": len(losses),
                 "losses": losses,
@@ -456,6 +586,7 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
             "/api/agents/graph/step",
             "/api/agents/graph/reward",
             "/api/agents/graph/train",
+            "/api/agents/grpo-episode",
         }
         if path not in routes:
             self._send_json(404, {"error": "API endpoint not found"})
@@ -491,6 +622,8 @@ class StudioRequestHandler(SimpleHTTPRequestHandler):
                 result = self.service.reward_agent_graph(payload)
             elif path == "/api/agents/graph/train":
                 result = self.service.train_agent_graph(payload)
+            elif path == "/api/agents/grpo-episode":
+                result = self.service.run_agent_grpo_episode(payload)
             else:
                 result = (
                     self.service.upload_training_file(payload)
@@ -540,8 +673,15 @@ def create_server(
     port: int = 8765,
     data_directory: Path | None = None,
     web_directory: Path | None = None,
+    backbone_directory: Path | None = None,
+    backbone_device: str = "auto",
 ) -> ThreadingHTTPServer:
-    service = StudioService(data_directory or _default_data_directory(), web_directory)
+    service = StudioService(
+        data_directory or _default_data_directory(),
+        web_directory,
+        backbone_directory=backbone_directory,
+        backbone_device=backbone_device,
+    )
 
     class BoundHandler(StudioRequestHandler):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -555,15 +695,37 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1", help="bind address (defaults to localhost only)")
     parser.add_argument("--port", type=int, default=8765, help="HTTP port (defaults to 8765)")
     parser.add_argument("--data-dir", type=Path, help="model and conversation storage directory")
+    parser.add_argument(
+        "--backbone-dir",
+        type=Path,
+        default=Path(os.environ["BRNA_BACKBONE_DIR"])
+        if os.environ.get("BRNA_BACKBONE_DIR")
+        else None,
+        help="directory containing a previously downloaded local Hugging Face model",
+    )
+    parser.add_argument(
+        "--backbone-device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="device for a configured local pretrained model",
+    )
     parser.add_argument("--no-browser", action="store_true", help="do not open the browser automatically")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     data_directory = (args.data_dir or _default_data_directory()).expanduser().resolve()
-    server = create_server(host=args.host, port=args.port, data_directory=data_directory)
+    server = create_server(
+        host=args.host,
+        port=args.port,
+        data_directory=data_directory,
+        backbone_directory=args.backbone_dir,
+        backbone_device=args.backbone_device,
+    )
     url = f"http://{args.host}:{server.server_address[1]}/"
     print(f"BRNA Studio is running at {url}")
     print(f"Local model data is stored in {data_directory}")
+    if args.backbone_dir:
+        print(f"Using local pretrained model from {args.backbone_dir}")
     if not args.no_browser:
         webbrowser.open(url)
     try:

@@ -73,6 +73,7 @@ def test_agents_share_messages_learn_from_episode_feedback_and_persist(tmp_path)
         "language_model.py",
         "server.py",
         "reasoning_data.py",
+        "hf_adapter.py",
     }
 
 

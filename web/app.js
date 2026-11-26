@@ -162,11 +162,21 @@ async function refreshLocalModel() {
     renderAgentNetwork(localAgentNetwork);
     await refreshAgentGraph();
     const model = localModelHealth.model;
-    $("#localModelBadge").textContent = model.trained ? "Model trained" : "Model needs training";
-    $("#localModelStatus").textContent =
-      `Self-hosted server connected · ${model.training_characters.toLocaleString()} training characters · ` +
-      `${localModelHealth.conversation_examples} saved examples. ` +
-      "The model and data stay on this computer.";
+    if (model.backend === "local-pretrained-causal-lm") {
+      $("#localModelBadge").textContent = model.trained
+        ? "Pretrained model · adapter trained"
+        : "Pretrained model ready";
+      $("#localModelStatus").textContent =
+        `Local pretrained causal model connected · ${model.backbone_hidden_size} hidden units · ` +
+        `${model.device} · ${localModelHealth.conversation_examples} saved examples. ` +
+        "Model files and adapter training stay on this computer.";
+    } else {
+      $("#localModelBadge").textContent = model.trained ? "Model trained" : "Model needs training";
+      $("#localModelStatus").textContent =
+        `Self-hosted scratch model connected · ${model.training_characters.toLocaleString()} training characters · ` +
+        `${localModelHealth.conversation_examples} saved examples. ` +
+        "The model and data stay on this computer.";
+    }
     $("#trainFromExamples").disabled = localModelHealth.conversation_examples === 0;
     $("#trainFromCorpus").disabled = false;
     if (syncError) {
@@ -233,6 +243,16 @@ function renderAgentNetwork(state) {
     !connected || !reasoningTaskCatalog || nodes.length === 0;
   $("#runVerifiedEpisode").disabled =
     !connected || !reasoningTaskCatalog || nodes.length < 2 || trainedNodes !== nodes.length;
+  const grpoEnabled =
+    localModelHealth?.model.backend === "local-pretrained-causal-lm" &&
+    trainedNodes === nodes.length &&
+    nodes.length > 0 &&
+    Boolean(reasoningTaskCatalog);
+  $("#runGRPOEpisode").disabled = !grpoEnabled;
+  if (grpoEnabled) {
+    $("#grpoEpisodeStatus").textContent =
+      "Verifier-scored candidate groups update each node's LoRA adapter and continuous graph soft prefixes.";
+  }
   if (!connected) {
     $("#agentBuilderStatus").textContent = "Connect the local BRNA Studio server to create persistent agent models.";
   } else {
@@ -1186,6 +1206,46 @@ $("#runVerifiedEpisode").addEventListener("click", async () => {
     await refreshLocalModel();
   } catch (error) {
     $("#verifiedEpisodeOutput").textContent = `Verified episode failed: ${error.message}`;
+  } finally {
+    renderAgentNetwork(localAgentNetwork);
+  }
+});
+
+$("#runGRPOEpisode").addEventListener("click", async () => {
+  try {
+    const taskName = $("#reasoningTaskSelect").value;
+    const seed = Number($("#reasoningSeed").value);
+    const index = Number($("#reasoningEpisodeIndex").value);
+    const group_size = Number($("#grpoGroupSize").value);
+    const kl_beta = Number($("#grpoKLBeta").value);
+    if (!taskName) throw new Error("Choose an available reasoning task.");
+    if (!Number.isInteger(seed) || seed < 0 || seed > 4294967295) {
+      throw new Error("Dataset seed must be a whole number from 0 to 4294967295.");
+    }
+    if (!Number.isInteger(index) || index < 0 || index > 127) {
+      throw new Error("Task index must be a whole number from 0 to 127.");
+    }
+    if (!Number.isInteger(group_size) || group_size < 2 || group_size > 8) {
+      throw new Error("GRPO group size must be a whole number from 2 to 8.");
+    }
+    if (!Number.isFinite(kl_beta) || kl_beta < 0 || kl_beta > 1) {
+      throw new Error("Frozen-base KL weight must be between 0 and 1.");
+    }
+    $("#runGRPOEpisode").disabled = true;
+    $("#grpoEpisodeStatus").textContent = "Sampling candidate groups, verifying answers, and optimizing adapters…";
+    const result = await localModelRequest("agents/grpo-episode", {
+      task_name: taskName,
+      seed,
+      index,
+      group_size,
+      kl_beta,
+    });
+    $("#grpoEpisodeStatus").textContent =
+      `${result.algorithm} · ${result.verified_candidates} verified candidates · ` +
+      `mean reward ${result.mean_reward.toFixed(3)} · mean KL ${result.mean_kl.toFixed(4)}.`;
+    await refreshLocalModel();
+  } catch (error) {
+    $("#grpoEpisodeStatus").textContent = `GRPO episode failed: ${error.message}`;
   } finally {
     renderAgentNetwork(localAgentNetwork);
   }

@@ -12,11 +12,11 @@ The evidence currently available is limited to a toy backbone and one synthetic 
 
 An installable, local-first browser studio is in [`web/`](web/). BRNA message-passing networks are the default, with configurable nodes, per-node features, hidden width, message-passing hops, readout node, in-degree, outputs, and communication mode. Dense networks remain optional. Both families support supervised training, evolutionary weight search, and contextual reward updates. Model import/export and browser-local save are included.
 
-The [GitHub Pages app](https://damianwalker356-hub.github.io/Node_network_Brna/web/) is static but can train and run a compact character n-gram generator directly in your browser; no separate server or install is required. Its model and training text stay in that browser profile. For the optional Python-backed version, install the project with Python 3.12 and run `brna-studio`; this starts a local server and opens the browser app. That server provides a separate character-level RNN, PDF/DOCX extraction, and persistent agent-network features. Both from-scratch models are experimental and are not comparable to a modern large language model.
+The [GitHub Pages app](https://damianwalker356-hub.github.io/Node_network_Brna/web/) is static but can train and run a compact character n-gram generator directly in your browser; no separate server or install is required. Its model and training text stay in that browser profile. The optional Python-backed service still supports its small character RNN by default. It can also use an already-downloaded local Hugging Face causal model with per-agent LoRA adapters; this is opt-in and does not download weights. In that backend, graph-produced continuous soft-prefix embeddings are prepended to each node's prompt embeddings, and their graph can receive gradients from generated-token policy objectives. This optional implementation has not been validated against a real checkpoint in this environment.
 
 The browser-only model accepts `.txt` and `.md` training text directly. With the optional Python server running, the app also accepts `.docx` and `.pdf` for on-device extraction and trains its Python model. Legacy `.doc` and RTF files are rejected explicitly. Uploaded data is not network-egressed by the application.
 
-The local **Agent network** page creates up to eight separately trained role-based model nodes. Nodes train on a shared corpus, exchange private drafts and shared revisions, and can receive discounted episodic REINFORCE updates from a user reward. This uses the existing experimental character-level RNN; it is not frontier-scale language modeling, and no parity with ChatGPT or Claude Sonnet is claimed. Current shared-corpus limit is 50,000 characters. Node checkpoints and privacy-preserving run records (settings, seeds, hashes, aggregate results; no prompts or responses) are stored under the local app data directory.
+The local **Agent network** page creates up to eight separately trained role-based model nodes. Nodes train on a shared corpus, exchange private drafts and shared revisions, and can receive discounted episodic REINFORCE updates from a user reward. Without a configured pretrained backbone, the nodes use the existing experimental character-level RNN. When enabled, one local pretrained base is shared and each node gets a separate LoRA adapter; graph-driven chat runs the bounded latent graph before generating each response. This is not frontier-scale language modeling, and no parity with ChatGPT or Claude Sonnet is claimed. Current shared-corpus limit is 50,000 characters. Node checkpoints and privacy-preserving run records (settings, seeds, hashes, aggregate results; no prompts or responses) are stored under the local app data directory.
 
 Install and launch locally:
 
@@ -24,6 +24,15 @@ Install and launch locally:
 python -m pip install -e '.[reasoning]'
 brna-studio
 ```
+
+To opt into the pretrained backend, install its optional dependencies and point the service at a model directory that is already present on disk:
+
+```bash
+python -m pip install -e '.[llm]'
+brna-studio --backbone-dir /path/to/local/huggingface-model --backbone-device auto
+```
+
+`--backbone-device` accepts `auto`, `cpu`, or `cuda`; `BRNA_BACKBONE_DIR` can provide the directory instead of the flag. Model and tokenizer loading use local files only. The project includes no downloader and does not fetch model weights. Training updates LoRA adapters on local text; interactive reward feedback applies a token-level REINFORCE update. The optional `/api/agents/grpo-episode` route performs small-group verifier-scored updates using the continuous graph prefix, group-relative advantages, and a frozen-base KL penalty. This is not instruction-tuned SFT on arbitrary plain text or a full end-to-end RL system. Hardware fit and output quality depend on the selected model, sequence length, and available memory.
 
 The page can generate seeded arithmetic and leg-counting examples, train every current node on them, or run one task against Reasoning Gym's answer verifier and apply the result as episodic reward. It does not download a static corpus. The GitHub Pages app cannot access this Python-hosted Reasoning Gym task generator.
 
@@ -33,7 +42,7 @@ The research target is a hybrid of a gated B-RNA node network, separate digital 
 
 For the user-created language agents, `brna.agent_graph` provides three connected layers: `BoundedLatentNode` turns each trained model's hidden context into an L2-bounded message; `DifferentiableGatedGraph` and `DifferentiableGraphGateTrainer` learn directed message transforms and gates; and `ClosedLoopRLPolicyOptimizer` trains graph-selected actions from discounted episode rewards. `AgentGraphBridge` runs actual `AgentNetwork` nodes through that path and persists updated agent models. Graph checkpoints support save/load.
 
-The local studio exposes graph status, supervised training, and caller-driven RL episodes through `/api/agents/graph` and `/api/agents/graph/*`. Start an episode, request a step, evaluate its discrete action in your own software task, and submit a reward; mark the final reward with `done: true`. Graph checkpoints are stored with the local agent data and tied to the current node IDs. This API does not execute an environment or connect to a physical B-RNA device.
+The local studio exposes graph status, supervised training, and caller-driven RL episodes through `/api/agents/graph` and `/api/agents/graph/*`. Start an episode, request a step, evaluate its discrete action in your own software task, and submit a reward; mark the final reward with `done: true`. With the optional pretrained backend, graph messages are projected into continuous soft-prefix embeddings, and `/api/agents/grpo-episode` samples groups scored by the selected deterministic Reasoning Gym verifier, using group-relative advantages and a frozen-base KL penalty. Graph prefix checkpoints are stored alongside the action graph. This is an experimental small-group policy optimizer, not a fully tested production GRPO trainer; it does not execute a task environment or connect to a physical B-RNA device.
 
 Run a reproducible small comparison with:
 
