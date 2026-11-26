@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools==75.8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brna-v0"
+version = "0.1.0"
+description = "Reproducible software-only B-RNA prototype baseline"
+requires-python = ">=3.12,<3.13"
+dependencies = ["numpy==2.2.3"]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.5", "ruff==0.9.7"]
+pdf = ["reportlab==4.3.1"]
+torch = ["torch==2.6.0"]
+
+[project.scripts]
+brna-run = "brna.experiment:main"
+brna-report = "brna.reporting:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not slow'"
+markers = [
+  "req(id): requirement exercised by this test",
+  "slow: long-running training tests, excluded from default test runs",
+  "t0: Rev B test T0 out-degree",
+  "t1: Rev B test T1 message norm bound",
+  "t2: Rev B test T2 runaway control",
+  "t3: Rev B test T3 determinism",
+  "t4: Rev B test T4 gate bounds",
+  "t5: Rev B test T5 budget cap",
+  "t6: Rev B test T6 translator latency",
+  "t7: Rev B test T7 information transfer",
+  "t8: Rev B test T8 hop limit",
+  "t9: Rev B test T9 repeat and duplicate blocking",
+  "traceability: requirement/test mapping check",
+  "security: software-only import policy check",
+  "gradient: numerical gradient validation",
+  "reporting: report input/output validation",
+  "regression: synthetic ablation regression",
+]

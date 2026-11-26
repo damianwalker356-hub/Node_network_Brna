@@ -1,0 +1,17 @@
+requirement_id,description,source,status,test_mapping
+R-NET-01,Bound toy-network out-degree,Rev B description,Ready for review,test_T0_out_degree_is_bounded
+R-NET-02,Bound message vector norm,Rev B description,Ready for review,test_T1_message_norm_bound
+R-NET-03,Prevent runaway propagation,Rev B description,Ready for review,test_T2_runaway_control_is_finite_and_bounded
+R-NET-04,Deterministic propagation for fixed inputs,Rev B description,Ready for review,test_T3_propagation_is_deterministic
+R-NET-05,Keep edge gates in [0 1],Prototype behavior,Ready for review,test_T4_gate_bounds
+R-NET-06,Enforce message budget,Rev B description,Ready for review,test_T5_budget_cap
+R-NET-07,Measure local translator latency,Rev B description,Ready for review,test_T6_translator_latency
+R-NET-08,Preserve toy translator information,Rev B description,Ready for review,test_T7_information_transfer
+R-NET-09,Enforce hop limit,Rev B description,Ready for review,test_T8_hop_limit
+R-NET-10,Block self repeats and duplicate directed edges,Rev B description,Ready for review,test_T9_repeat_and_duplicate_edges_blocked
+R-PROT-01,Manual gradients agree with numeric check below 1e-6,Prototype requirements,Ready for review,test_manual_gradient_numeric_check
+R-7.1,Record hashes commit seeds settings results and timestamp,BRNA-R-7.1,Ready for review,test_run_record_includes_required_metadata
+R-7.2,No network egress or process execution imports,BRNA-R-7.2,Ready for review,test_no_forbidden_egress_imports
+R-7.3,Reports include limitations and all recorded variants,BRNA-R-7.3,Ready for review,test_report_requires_limitations_and_all_declared_variants
+R-TRACE-01,Traceability mapping complete in both directions,Project acceptance,Ready for review,test_each_requirement_and_test_is_traceable
+R-REG-01,No-communication synthetic ablation remains near chance,Prototype verification,Ready for review,test_no_communication_ablation_near_chance

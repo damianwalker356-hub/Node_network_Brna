@@ -1,0 +1,6 @@
+risk_id,risk,mitigation,status
+RSK-01,Toy synthetic result may not generalize,Bound claims and later select representative tasks,Draft
+RSK-02,Unequal parameter counts confound comparison,Use equal-parameter option and report counts,Draft
+RSK-03,Few seeds and untuned training limit conclusions,Use at least 10 seeds for new comparisons and document tuning,Draft
+RSK-04,Source artifacts missing,Request authoritative source files and preserve discrepancy,Draft
+RSK-05,Proposed software classification unconfirmed,Verify NPR 7150.2D Appendix D,Draft
