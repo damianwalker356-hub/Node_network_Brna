@@ -50,4 +50,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "$GITHUB_REF_NAME" release/*.zip --generate-notes --title "BRNA Studio $GITHUB_REF_NAME"
+        run: |
+          notes_file="docs/release-notes-${GITHUB_REF_NAME}.md"
+          if [ -f "$notes_file" ]; then
+            gh release create "$GITHUB_REF_NAME" release/*.zip --notes-file "$notes_file" --title "BRNA Studio $GITHUB_REF_NAME"
+          else
+            gh release create "$GITHUB_REF_NAME" release/*.zip --generate-notes --title "BRNA Studio $GITHUB_REF_NAME"
+          fi

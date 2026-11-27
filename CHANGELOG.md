@@ -3,10 +3,13 @@
 All notable changes are recorded here.
 
 ## Unreleased
-- Connect trained user-created role agents to bounded latent graph messaging, differentiable directed gates, and discounted closed-loop policy learning.
-- Add a software-only closed-loop B-RNA simulator with adaptive digital translators, recurrent reservoir, critic-bounded feedback, and paired parameter-budget controls.
-- Integrate the optional Apache-2.0 Reasoning Gym v0.1.25 arithmetic task generators for seeded node training and verifier-scored RL episodes.
-- Add persistent role-based model agents with shared-corpus training, two-pass all-to-all communication, and discounted episodic REINFORCE feedback.
-- Add loopback document-upload training for TXT, Markdown, DOCX, and PDF corpora, with bounded extraction and explicit legacy-DOC rejection.
-- Add software-only B-RNA v0 package, test scaffolding, traceability, documentation, CI and record-driven report generation.
-- Preserve the supplied run record as an immutable historical input; document missing source artifacts and limitations.
+
+## 0.1.0 - 2026-11-27
+- Add a browser-local character n-gram model that trains and generates without a separate server.
+- Add the self-hosted Studio service, local recurrent text model, bounded document ingestion, and persistent cooperative agent training.
+- Add bounded latent-graph messaging, differentiable gates, episodic policy updates, and verifier-scored Reasoning Gym tasks.
+- Add an optional local-only Hugging Face backend with per-agent LoRA adapters and experimental graph-conditioned policy optimization.
+- Add the software-only closed-loop B-RNA simulator, test coverage, traceability, and verification records.
+- Document experimental scope, local-data behavior, optional dependencies, and model limitations.
+
+**Limitations:** This release is research software. The browser model is a compact character n-gram generator; the Python model is a small from-scratch RNN. The optional Hugging Face adapter has not been validated against a real checkpoint in this environment. No real-world or operational advantage is established.
